@@ -1,2 +1,9 @@
 *.class
 *.log
+/bin/
+/project/build.properties
+/project/project/
+/project/target/
+/target/
+.settings/
+.project
