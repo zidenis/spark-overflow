@@ -16,15 +16,15 @@ import org.apache.spark.sql.functions.{ concat, lit }
 object LDAExample {
 
   case class Post(
-    id:               Long,
+    id:               Int,
     postTypeId:       Int,
-    acceptedAnswerId: Option[Long],
-    parentId:         Option[Long],
+    acceptedAnswerId: Option[Int],
+    parentId:         Option[Int],
     creationDate:     String,
     score:            Int,
     viewCount:        Option[Int],
     body:             String,
-    title:            String,
+    title:            Option[String],
     tags:             Option[String],
     answerCount:      Option[Int],
     favoriteCount:    Option[Int])
@@ -32,29 +32,31 @@ object LDAExample {
   def parseXml(line: String) = {
     try {
       val xml = scala.xml.XML.loadString(line)
-      val id = (xml \@ "Id").toLong
+      val id = (xml \@ "Id").toInt
       val postTypeId = (xml \@ "PostTypeId").toInt
       val creationDate = (xml \@ "CreationDate")
       val score = (xml \@ "Score").toInt
-
-      val body = scala.xml.XML.loadString(xml \@ "Body")
-        .text // remove html tags
-        .filter(_ >= ' ') // throw away all control characters.
-        .toLowerCase()
-      val title = xml \@ "Title"
-
-      var acceptedAnswerId: Option[Long] = None
-      var parentId: Option[Long] = None
+      val body = (xml \@ "Body")
+//        .toLowerCase()
+//      val body = scala.xml.XML.loadString(xml \@ "Body")
+//        .text // remove html tags
+//        .filter(_ >= ' ') // throw away all control characters.
+//        .toLowerCase()
+      
+      var title: Option[String] = None
+      var acceptedAnswerId: Option[Int] = None
+      var parentId: Option[Int] = None
       var tags: Option[String] = None
       var viewCount: Option[Int] = None
       var answerCount: Option[Int] = None
       var favoriteCount: Option[Int] = None
       if (postTypeId == 1) {
+        title = Some(xml \@ "Title")
+        tags = Some(xml \@ "Tags")
         var temp = (xml \@ "AcceptedAnswerId")
-        acceptedAnswerId = if (temp.isEmpty()) None else Some(temp.toLong)
+        acceptedAnswerId = if (temp.isEmpty()) None else Some(temp.toInt)
         temp = (xml \@ "ViewCount")
         viewCount = if (temp.isEmpty()) None else Some(temp.toInt)
-        tags = Some(xml \@ "Tags")
         temp = (xml \@ "AnswerCount")
         answerCount = if (temp.isEmpty()) None else Some(temp.toInt)
         temp = (xml \@ "FavoriteCount")
@@ -62,7 +64,7 @@ object LDAExample {
       }
       if (postTypeId == 2) {
         var temp = (xml \@ "ParentId")
-        parentId = if (temp.isEmpty()) None else Some(temp.toLong)
+        parentId = if (temp.isEmpty()) None else Some(temp.toInt)
       }
       Some(
         Post(
@@ -89,25 +91,24 @@ object LDAExample {
     // Set the log level to only print errors
     Logger.getLogger("org").setLevel(Level.ERROR)
 
-    // Use new SparkSession interface in Spark 2.0
     val spark = SparkSession
       .builder
       .appName("LDAExample")
-      //.master("local[*]")
-      //.config("spark.sql.warehouse.dir", "file:///C:/temp") // Necessary to work around a Windows bug in Spark 2.0.0; omit if you're not on Windows.
+//      .master("local[*]")
       .getOrCreate()
 
-//    val lines = spark.sparkContext.textFile("./resources/Posts-Spark-100.xml").flatMap(parseXml)
+//    val lines = spark.sparkContext.textFile("./resources/Posts-Spark.xml").flatMap(parseXml)
     val lines = spark.sparkContext.textFile("hdfs://master:54310/user/hduser/stackoverflow/Posts.xml").flatMap(parseXml)
-   
-//    import org.apache.spark.sql.SparkSession.implicits._
-        import spark.implicits._
+    println("Count Lines = " + lines.count())
     
-        val posts = lines.toDS()
+    import spark.implicits._
+    
+    val posts = lines.toDS()
     
     //    posts.printSchema()
     //    posts.show
-        posts.count
+    val c = posts.count
+    println("Count Posts = " + c)
         
     //
     ////    println("Count = " + posts.count())
