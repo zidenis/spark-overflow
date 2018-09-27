@@ -107,7 +107,7 @@ object LDAExample {
     
     //    posts.printSchema()
     //    posts.show
-        posts.show(60,false)
+        posts.count
         
     //
     ////    println("Count = " + posts.count())
