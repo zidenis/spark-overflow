@@ -11,7 +11,9 @@ import org.apache.spark.mllib.linalg.Vector
 import org.apache.spark.mllib.util.MLUtils
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.SparkSession
-import org.apache.spark.sql.functions.{ concat, lit }
+import org.apache.spark.sql.functions._
+import java.time.LocalDateTime
+import java.sql.Timestamp
 
 object LDAExample {
 
@@ -20,7 +22,7 @@ object LDAExample {
     postTypeId:       Int,
     acceptedAnswerId: Option[Int],
     parentId:         Option[Int],
-    creationDate:     String,
+    creationDate:     Timestamp,
     score:            Int,
     viewCount:        Option[Int],
     body:             String,
@@ -34,9 +36,11 @@ object LDAExample {
       val xml = scala.xml.XML.loadString(line)
       val id = (xml \@ "Id").toInt
       val postTypeId = (xml \@ "PostTypeId").toInt
-      val creationDate = (xml \@ "CreationDate")
+      val creationDate = Timestamp.valueOf(LocalDateTime.parse(xml \@ "CreationDate"))
+//      val creationDate = LocalDateTime.parse(xml \@ "CreationDate")
       val score = (xml \@ "Score").toInt
       val body = (xml \@ "Body")
+      
 //        .toLowerCase()
 //      val body = scala.xml.XML.loadString(xml \@ "Body")
 //        .text // remove html tags
@@ -94,19 +98,27 @@ object LDAExample {
     val spark = SparkSession
       .builder
       .appName("LDAExample")
-//      .master("local[*]")
+      .master("local[*]")
       .getOrCreate()
 
 //    val lines = spark.sparkContext.textFile("./resources/Posts-Spark.xml").flatMap(parseXml)
-    val lines = spark.sparkContext.textFile("hdfs://master:54310/user/hduser/stackoverflow/Posts.xml").flatMap(parseXml)
+    val lines = spark.sparkContext.textFile("./resources/Posts-Spark-100.xml").flatMap(parseXml)
+//    val lines = spark.sparkContext.textFile("hdfs://master:54310/user/hduser/stackoverflow/Posts.xml").flatMap(parseXml)
     println("Count Lines = " + lines.count())
     
     import spark.implicits._
     
-    val posts = lines.toDS()
+    val posts = lines.toDS().where("year(creationDate) > 2012")
+    val tags = posts
+      .withColumn("clearedLeft", expr("substring(tags,2,length(tags))"))
+      .withColumn("clearedRight", expr("substring(clearedLeft,1,length(clearedLeft)-1)"))
+      .withColumn("splitted", split($"clearedRight", "><"))
+      .drop("tags", "clearedLeft", "clearedRight")
     
-    //    posts.printSchema()
-    //    posts.show
+//    posts.printSchema()
+//    posts.show
+    tags.show
+    
     val c = posts.count
     println("Count Posts = " + c)
         
