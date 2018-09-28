@@ -114,21 +114,27 @@ object LDAExample {
     val spark = SparkSession
       .builder
       .appName("LDAExample")
-      .master("local[*]")
+//      .master("local[*]")
       .getOrCreate()
 
 //    val lines = spark.sparkContext.textFile("./resources/Posts-Spark.xml").flatMap(parseXml)
-    val lines = spark.sparkContext.textFile("./resources/Posts-Spark-100.xml").flatMap(parseXml)
-//    val lines = spark.sparkContext.textFile("hdfs://master:54310/user/hduser/stackoverflow/Posts.xml").flatMap(parseXml)
+//    val lines = spark.sparkContext.textFile("./resources/Posts-Spark-100.xml").flatMap(parseXml)
+    val lines = spark.sparkContext.textFile("hdfs://master:54310/user/hduser/stackoverflow/Posts.xml").flatMap(parseXml)
     
     import spark.implicits._
 
     // Filtrar Posts para somente aqueles em que eh possivel ter pergunta sobre Apache Spark
-    val posts = lines.toDS().where("year(creationDate) > 2012")
+    val posts = lines
+      .toDS()
+      .where("year(creationDate) > 2012")
   
-    // Filtrar Posts para somente os que tiverem tags relacionadas a Apache Spark. Somente perguntas possuem Tags
+    // Filtrar Posts para somente os que tiverem tags relacionadas a Apache Spark. 
+    // Somente perguntas possuem Tags
     spark.udf.register("sparkRelated", (tags : String) =>  isSparkRelated(tags))
-    val sparkQuestions = posts.withColumn("sparkRelated", expr("sparkRelated(tags)")).filter("sparkRelated")
+    val sparkQuestions = posts
+      .where("postTypeId = 1")
+      .withColumn("sparkRelated", expr("sparkRelated(tags)"))
+      .where("sparkRelated")
     sparkQuestions.printSchema()
     println("Count Questions = " + sparkQuestions.count)
     
