@@ -14,6 +14,7 @@ import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.functions._
 import java.time.LocalDateTime
 import java.sql.Timestamp
+import org.apache.spark.sql.functions.udf
 
 object LDAExample {
 
@@ -89,6 +90,21 @@ object LDAExample {
       case e: Exception => None
     }
   }
+  
+  def isSparkRelated(tags : String) = {
+    tags.contains("apache-spark") || 
+    tags.contains("pyspark") ||
+    tags.contains("spark-dataframe") ||
+    tags.contains("spark-streaming") ||
+    tags.contains("sparkr") ||
+    tags.contains("spark-cassandra-connector") ||
+    tags.contains("sparklyr") ||
+    tags.contains("spark-graphx") ||
+    tags.contains("spark-submit") ||
+    tags.contains("spark-structured-streaming") ||
+    tags.contains("spark-csv") ||
+    tags.contains("spark-avro")
+  }
 
   def main(args: Array[String]) {
 
@@ -104,23 +120,20 @@ object LDAExample {
 //    val lines = spark.sparkContext.textFile("./resources/Posts-Spark.xml").flatMap(parseXml)
     val lines = spark.sparkContext.textFile("./resources/Posts-Spark-100.xml").flatMap(parseXml)
 //    val lines = spark.sparkContext.textFile("hdfs://master:54310/user/hduser/stackoverflow/Posts.xml").flatMap(parseXml)
-    println("Count Lines = " + lines.count())
     
     import spark.implicits._
-    
+
+    // Filtrar Posts para somente aqueles em que eh possivel ter pergunta sobre Apache Spark
     val posts = lines.toDS().where("year(creationDate) > 2012")
-    val tags = posts
-      .withColumn("clearedLeft", expr("substring(tags,2,length(tags))"))
-      .withColumn("clearedRight", expr("substring(clearedLeft,1,length(clearedLeft)-1)"))
-      .withColumn("splitted", split($"clearedRight", "><"))
-      .drop("tags", "clearedLeft", "clearedRight")
+  
+    // Filtrar Posts para somente os que tiverem tags relacionadas a Apache Spark. Somente perguntas possuem Tags
+    spark.udf.register("sparkRelated", (tags : String) =>  isSparkRelated(tags))
+    val sparkQuestions = posts.withColumn("sparkRelated", expr("sparkRelated(tags)")).filter("sparkRelated")
+    sparkQuestions.printSchema()
+    println("Count Questions = " + sparkQuestions.count)
     
-//    posts.printSchema()
-//    posts.show
-    tags.show
-    
-    val c = posts.count
-    println("Count Posts = " + c)
+//    val c = posts.count
+//    println("Count Posts = " + c)
         
     //
     ////    println("Count = " + posts.count())
