@@ -13,7 +13,6 @@ import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
 import java.time.LocalDateTime
 import java.sql.Timestamp
-import org.apache.spark.sql.functions.udf
 
 object LDAExample {
 
@@ -37,16 +36,13 @@ object LDAExample {
       val id = (xml \@ "Id").toInt
       val postTypeId = (xml \@ "PostTypeId").toInt
       val creationDate = Timestamp.valueOf(LocalDateTime.parse(xml \@ "CreationDate"))
-//      val creationDate = LocalDateTime.parse(xml \@ "CreationDate")
       val score = (xml \@ "Score").toInt
       val body = (xml \@ "Body")
-      
 //        .toLowerCase()
 //      val body = scala.xml.XML.loadString(xml \@ "Body")
 //        .text // remove html tags
 //        .filter(_ >= ' ') // throw away all control characters.
 //        .toLowerCase()
-      
       var title: Option[String] = None
       var acceptedAnswerId: Option[Int] = None
       var parentId: Option[Int] = None
@@ -93,72 +89,98 @@ object LDAExample {
   def isSparkRelated(tags : String) = {
     tags.contains("apache-spark") || 
     tags.contains("pyspark") ||
+    tags.contains("sparklyr") ||
+    tags.contains("sparkr") ||
     tags.contains("spark-dataframe") ||
     tags.contains("spark-streaming") ||
-    tags.contains("sparkr") ||
     tags.contains("spark-cassandra-connector") ||
-    tags.contains("sparklyr") ||
     tags.contains("spark-graphx") ||
     tags.contains("spark-submit") ||
     tags.contains("spark-structured-streaming") ||
+    tags.contains("spark-observer") ||
     tags.contains("spark-csv") ||
-    tags.contains("spark-avro")
+    tags.contains("spark-avro") ||
+    tags.contains("spark-hive")
+  }
+  
+  def cleanDocument(document : String) = {
+    document
+      .filter(_ >= ' ') // throw away all control characters.
+      .toLowerCase() // put all chars in lowercase
+      .replaceAll("<pre>.+</pre>", " CODE ") // remove code parts
+      .replaceAll("<([^>])+>", " TAG ") // remove tags 
   }
 
   def main(args: Array[String]) {
 
-    // Set the log level to only print errors
-    Logger.getLogger("org").setLevel(Level.ERROR)
+    Logger.getLogger("org").setLevel(Level.ERROR) // Set the log level to only print errors
 
     val spark = SparkSession
       .builder
       .appName("LDAExample")
-//      .master("local[*]")
+      .master("local[*]")
       .getOrCreate()
 
 //    val lines = spark.sparkContext.textFile("./resources/Posts-Spark.xml").flatMap(parseXml)
-//    val lines = spark.sparkContext.textFile("./resources/Posts-Spark-100.xml").flatMap(parseXml)
-    val lines = spark.sparkContext.textFile("hdfs://master:54310/user/hduser/stackoverflow/Posts.xml").flatMap(parseXml)
+    val lines = spark.sparkContext.textFile("./resources/Posts-Spark-100.xml").flatMap(parseXml)
+//    val lines = spark.sparkContext.textFile("hdfs://master:54310/user/hduser/stackoverflow/Posts.xml").flatMap(parseXml)
     
     import spark.implicits._
     import spark.sql
 
-    // Filtrar Posts para somente aqueles em que eh possivel ter pergunta sobre Apache Spark
+    // Obter posts para somente aqueles em que eh possivel ter pergunta sobre Apache Spark
     val posts = lines
       .toDS()
-      .where("year(creationDate) > 2012")
+      .where("year(creationDate) > 2012") // Primeira pergunta sobre spark eh de 2013
   
-    // Filtrar Posts para somente os que tiverem tags relacionadas a Apache Spark. 
-    // Somente perguntas possuem Tags
+    // Obter Posts com perguntas sobre Spark 
     spark.udf.register("sparkRelated", (tags : String) =>  isSparkRelated(tags))
+    spark.udf.register("cleanDocument", (document : String) =>  cleanDocument(document))
     val sparkQuestions = posts
-      .where("postTypeId = 1")
-      .withColumn("sparkRelated", expr("sparkRelated(tags)"))
-      .where("sparkRelated")
-    sparkQuestions.createOrReplaceTempView("sparkQuestions")
-    println("-")
+      .where("postTypeId = 1")  // somente perguntas
+      .withColumn("sparkRelated", expr("sparkRelated(tags)")) // posts com tag de spark
+      .where("sparkRelated") // somente com tags de spark
 //    sparkQuestions.show()
-//    sparkQuestions.printSchema()
-    println("Questions = " + sparkQuestions.count)
-    
+    val corpusQ = sparkQuestions
+      .withColumn("title_body", concat($"title", lit(" "), $"body"))
+      .withColumn("document", expr("cleanDocument(title_body)"))
+      .select("id","document")
+    corpusQ.createOrReplaceTempView("corpusQ")
+    println("Questions = " + corpusQ.count())
+    corpusQ.show(10, false)
+
+    // Obter Posts com respostas a perguntas sobre Spark
     val stackAnswers = posts
-      .where("postTypeId = 2")
+      .where("postTypeId = 2") // somente respostas
     stackAnswers.createOrReplaceTempView("stackAnswers")
-    
 //    val sparkAnswers = stackAnswers
 //      .join(sparkQuestions, stackAnswers("parentId") === sparkQuestions("id"), "leftsemi")
-    val sparkAnswers = sql("select * from stackAnswers a left semi join sparkQuestions q on a.parentId = q.id")
-    sparkAnswers.createOrReplaceTempView("sparkAnswers")
-    println("-")
-//    sparkAnswers.show()
-//    sparkAnswers.printSchema()
-    println("Answers = " + sparkAnswers.count) 
+    val corpusA = sql("""
+      SELECT a.parentId
+           , cleanDocument(concat_ws(' ', collect_list(a.body))) as document 
+        FROM stackAnswers a 
+   LEFT SEMI JOIN corpusQ q 
+          ON a.parentId = q.id 
+    GROUP BY a.parentId
+    """)
+    corpusA.createOrReplaceTempView("corpusA")
+    println("Answers = " + corpusA.count())
+    corpusA.show(10, false)    
     
-    val sparkQA = sql("select * from sparkQuestions q left join sparkAnswers a on q.id = a.parentId")
-    println("-")
-//    sparkQA.show()
-//    sparkQA.printSchema()
-    println("Spark QA = " + sparkQA.count)
+    // Obter Posts com perguntas sobre Spark e suas respectivas perguntas
+    val sparkQA = sql("""
+      SELECT id, q.document qd, a.document ad 
+        FROM corpusQ q 
+   LEFT JOIN corpusA a 
+          ON q.id = a.parentId
+    """)
+    val corpusQA = sparkQA
+      .withColumn("ad_not_null", coalesce($"ad",lit("")))
+      .withColumn("document", concat($"qd", lit(" "), $"ad_not_null"))
+      .select("id","document")
+    println("QA = " + corpusQA.count())
+    corpusQA.show(10, false)
+    
     //
     ////    println("Count = " + posts.count())
     //
