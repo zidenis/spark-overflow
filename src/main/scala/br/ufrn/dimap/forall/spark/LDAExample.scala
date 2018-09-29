@@ -15,7 +15,22 @@ import java.time.LocalDateTime
 import java.sql.Timestamp
 
 object LDAExample {
-
+  
+  val resourceInput = "./resources/Posts-Spark-100.xml"
+  val corpusQoutput = "./resources/CorpusQ.parquet"
+  val corpusAoutput = "./resources/CorpusA.parquet"
+  val corpusQAoutput = "./resources/CorpusQA.parquet"
+//    val resourceInput = "hdfs://master:54310/user/hduser/stackoverflow/Posts.xml"
+//    val corpusQoutput = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQ.parquet"
+//    val corpusAoutput = "hdfs://master:54310/user/hduser/stackoverflow/CorpusA.parquet"
+//    val corpusQAoutput = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQA.parquet"
+  
+  val spark = SparkSession
+      .builder
+      .appName("LDAExample")
+      .master("local[*]")
+      .getOrCreate()
+  
   case class Post(
     id:               Int,
     postTypeId:       Int,
@@ -107,20 +122,27 @@ object LDAExample {
       .replaceAll("<pre>.+</pre>", " CODE ") // remove code parts
       .replaceAll("<([^>])+>", " TAG ") // remove tags 
   }
+  
+  def reading() {
+    val corpusQ = spark.read.format("parquet").parquet(corpusQoutput)
+    println("Questions = " + corpusQ.count())
+    val corpusA = spark.read.format("parquet").parquet(corpusAoutput)
+    println("Answers = " + corpusA.count())
+    val corpusQA = spark.read.format("parquet").parquet(corpusQAoutput)
+    println("Q n A = " + corpusQA.count())
+  }
 
   def main(args: Array[String]) {
-
+    
     Logger.getLogger("org").setLevel(Level.ERROR) // Set the log level to only print errors
-
-    val spark = SparkSession
-      .builder
-      .appName("LDAExample")
-      .master("local[*]")
-      .getOrCreate()
-
-//    val lines = spark.sparkContext.textFile("./resources/Posts-Spark.xml").flatMap(parseXml)
-    val lines = spark.sparkContext.textFile("./resources/Posts-Spark-100.xml").flatMap(parseXml)
-//    val lines = spark.sparkContext.textFile("hdfs://master:54310/user/hduser/stackoverflow/Posts.xml").flatMap(parseXml)
+    processing()
+    reading()
+    spark.stop()
+  }
+  
+  def processing() {
+  
+    val lines = spark.sparkContext.textFile(resourceInput).flatMap(parseXml)
     
     import spark.implicits._
     import spark.sql
@@ -143,8 +165,9 @@ object LDAExample {
       .withColumn("document", expr("cleanDocument(title_body)"))
       .select("id","document")
     corpusQ.createOrReplaceTempView("corpusQ")
-    println("Questions = " + corpusQ.count())
-    corpusQ.show(10, false)
+//    println("Questions = " + corpusQ.count())
+//    corpusQ.show(10, false)
+    corpusQ.write.mode(SaveMode.Overwrite).format("parquet").save(corpusQoutput)
 
     // Obter Posts com respostas a perguntas sobre Spark
     val stackAnswers = posts
@@ -161,8 +184,9 @@ object LDAExample {
     GROUP BY a.parentId
     """)
     corpusA.createOrReplaceTempView("corpusA")
-    println("Answers = " + corpusA.count())
-    corpusA.show(10, false)    
+//    println("Answers = " + corpusA.count())
+//    corpusA.show(10, false)
+    corpusA.write.mode(SaveMode.Overwrite).format("parquet").save(corpusAoutput)
     
     // Obter Posts com perguntas sobre Spark e suas respectivas perguntas
     val sparkQA = sql("""
@@ -175,15 +199,12 @@ object LDAExample {
       .withColumn("ad_not_null", coalesce($"ad",lit("")))
       .withColumn("document", concat($"qd", lit(" "), $"ad_not_null"))
       .select("id","document")
-    println("QA = " + corpusQA.count())
-    corpusQA.show(10, false)
-    
-    //
-    ////    println("Count = " + posts.count())
-    //
-    //    val corpus = posts.withColumn("document", concat($"title", lit(" "), $"body")).select("id","document")
-    //
-    ////    corpus.show(false)
+//    println("QA = " + corpusQA.count())
+//    corpusQA.show(10, false)
+    corpusQA.write.mode(SaveMode.Overwrite).format("parquet").save(corpusQAoutput)
+  }
+  
+  def lda() {  
     //
     //    // Set params for RegexTokenizer
     //    val tokenizer = new RegexTokenizer()
@@ -311,9 +332,6 @@ object LDAExample {
     //        println(s"TOPIC $i")
     //        topic.foreach { case (term, weight) => println(s"$term\t$weight") }
     //        println(s"==========")
-    //    }
-
-    spark.stop()
   }
-
+  
 }
