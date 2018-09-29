@@ -9,8 +9,7 @@ import org.apache.spark.mllib.clustering.LDA
 import org.apache.spark.mllib.clustering.OnlineLDAOptimizer
 import org.apache.spark.mllib.linalg.Vector
 import org.apache.spark.mllib.util.MLUtils
-import org.apache.spark.sql.Row
-import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
 import java.time.LocalDateTime
 import java.sql.Timestamp
@@ -122,6 +121,7 @@ object LDAExample {
     val lines = spark.sparkContext.textFile("hdfs://master:54310/user/hduser/stackoverflow/Posts.xml").flatMap(parseXml)
     
     import spark.implicits._
+    import spark.sql
 
     // Filtrar Posts para somente aqueles em que eh possivel ter pergunta sobre Apache Spark
     val posts = lines
@@ -135,12 +135,30 @@ object LDAExample {
       .where("postTypeId = 1")
       .withColumn("sparkRelated", expr("sparkRelated(tags)"))
       .where("sparkRelated")
-    sparkQuestions.printSchema()
-    println("Count Questions = " + sparkQuestions.count)
+    sparkQuestions.createOrReplaceTempView("sparkQuestions")
+    println("-")
+//    sparkQuestions.show()
+//    sparkQuestions.printSchema()
+    println("Questions = " + sparkQuestions.count)
     
-//    val c = posts.count
-//    println("Count Posts = " + c)
-        
+    val stackAnswers = posts
+      .where("postTypeId = 2")
+    stackAnswers.createOrReplaceTempView("stackAnswers")
+    
+//    val sparkAnswers = stackAnswers
+//      .join(sparkQuestions, stackAnswers("parentId") === sparkQuestions("id"), "leftsemi")
+    val sparkAnswers = sql("select * from stackAnswers a left semi join sparkQuestions q on a.parentId = q.id")
+    sparkAnswers.createOrReplaceTempView("sparkAnswers")
+    println("-")
+//    sparkAnswers.show()
+//    sparkAnswers.printSchema()
+    println("Answers = " + sparkAnswers.count) 
+    
+    val sparkQA = sql("select * from sparkQuestions q left join sparkAnswers a on q.id = a.parentId")
+    println("-")
+//    sparkQA.show()
+//    sparkQA.printSchema()
+    println("Spark QA = " + sparkQA.count)
     //
     ////    println("Count = " + posts.count())
     //
