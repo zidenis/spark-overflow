@@ -19,16 +19,17 @@ object LDAExample {
   case class Post(
     id:               Int,
     postTypeId:       Int,
-    acceptedAnswerId: Option[Int],
+//    acceptedAnswerId: Option[Int],
     parentId:         Option[Int],
     creationDate:     Timestamp,
-    score:            Int,
-    viewCount:        Option[Int],
+//    score:            Int,
+//    viewCount:        Option[Int],
     body:             String,
     title:            Option[String],
-    tags:             Option[String],
-    answerCount:      Option[Int],
-    favoriteCount:    Option[Int])
+    tags:             Option[String]
+//    answerCount:      Option[Int],
+//    favoriteCount:    Option[Int]
+  )
 
   def parseXml(line: String) = {
     try {
@@ -36,31 +37,26 @@ object LDAExample {
       val id = (xml \@ "Id").toInt
       val postTypeId = (xml \@ "PostTypeId").toInt
       val creationDate = Timestamp.valueOf(LocalDateTime.parse(xml \@ "CreationDate"))
-      val score = (xml \@ "Score").toInt
+//      val score = (xml \@ "Score").toInt
       val body = (xml \@ "Body")
-//        .toLowerCase()
-//      val body = scala.xml.XML.loadString(xml \@ "Body")
-//        .text // remove html tags
-//        .filter(_ >= ' ') // throw away all control characters.
-//        .toLowerCase()
       var title: Option[String] = None
-      var acceptedAnswerId: Option[Int] = None
+//      var acceptedAnswerId: Option[Int] = None
       var parentId: Option[Int] = None
       var tags: Option[String] = None
-      var viewCount: Option[Int] = None
-      var answerCount: Option[Int] = None
-      var favoriteCount: Option[Int] = None
+//      var viewCount: Option[Int] = None
+//      var answerCount: Option[Int] = None
+//      var favoriteCount: Option[Int] = None
       if (postTypeId == 1) {
         title = Some(xml \@ "Title")
         tags = Some(xml \@ "Tags")
-        var temp = (xml \@ "AcceptedAnswerId")
-        acceptedAnswerId = if (temp.isEmpty()) None else Some(temp.toInt)
-        temp = (xml \@ "ViewCount")
-        viewCount = if (temp.isEmpty()) None else Some(temp.toInt)
-        temp = (xml \@ "AnswerCount")
-        answerCount = if (temp.isEmpty()) None else Some(temp.toInt)
-        temp = (xml \@ "FavoriteCount")
-        favoriteCount = if (temp.isEmpty()) None else Some(temp.toInt)
+//        var temp = (xml \@ "AcceptedAnswerId")
+//        acceptedAnswerId = if (temp.isEmpty()) None else Some(temp.toInt)
+//        temp = (xml \@ "ViewCount")
+//        viewCount = if (temp.isEmpty()) None else Some(temp.toInt)
+//        temp = (xml \@ "AnswerCount")
+//        answerCount = if (temp.isEmpty()) None else Some(temp.toInt)
+//        temp = (xml \@ "FavoriteCount")
+//        favoriteCount = if (temp.isEmpty()) None else Some(temp.toInt)
       }
       if (postTypeId == 2) {
         var temp = (xml \@ "ParentId")
@@ -70,17 +66,18 @@ object LDAExample {
         Post(
           id,
           postTypeId,
-          acceptedAnswerId,
+//          acceptedAnswerId,
           parentId,
           creationDate,
-          score,
-          viewCount,
+//          score,
+//          viewCount,
           body,
           title,
-          tags,
-          answerCount,
-          favoriteCount)
-          )
+          tags
+//          answerCount,
+//          favoriteCount
+        )
+      )
     } catch {
       case e: Exception => None
     }
