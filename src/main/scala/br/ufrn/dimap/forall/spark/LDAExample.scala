@@ -16,19 +16,20 @@ import java.sql.Timestamp
 
 object LDAExample {
   
-  val resourceInput = "./resources/Posts-Spark-100.xml"
-  val corpusQoutput = "./resources/CorpusQ.parquet"
-  val corpusAoutput = "./resources/CorpusA.parquet"
-  val corpusQAoutput = "./resources/CorpusQA.parquet"
-//    val resourceInput = "hdfs://master:54310/user/hduser/stackoverflow/Posts.xml"
-//    val corpusQoutput = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQ.parquet"
-//    val corpusAoutput = "hdfs://master:54310/user/hduser/stackoverflow/CorpusA.parquet"
-//    val corpusQAoutput = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQA.parquet"
+//  val resourceInput = "./resources/Posts-Spark-100.xml"
+//  val corpusQoutput = "./resources/CorpusQ.parquet"
+//  val corpusAoutput = "./resources/CorpusA.parquet"
+//  val corpusQAoutput = "./resources/CorpusQA.parquet"
+  
+    val resourceInput = "hdfs://master:54310/user/hduser/stackoverflow/Posts.xml"
+    val corpusQoutput = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQ.parquet"
+    val corpusAoutput = "hdfs://master:54310/user/hduser/stackoverflow/CorpusA.parquet"
+    val corpusQAoutput = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQA.parquet"
   
   val spark = SparkSession
       .builder
       .appName("LDAExample")
-      .master("local[*]")
+//      .master("local[*]")
       .getOrCreate()
   
   case class Post(
@@ -124,11 +125,11 @@ object LDAExample {
   }
   
   def reading() {
-    val corpusQ = spark.read.format("parquet").parquet(corpusQoutput)
+    val corpusQ = spark.read.parquet(corpusQoutput)
     println("Questions = " + corpusQ.count())
-    val corpusA = spark.read.format("parquet").parquet(corpusAoutput)
+    val corpusA = spark.read.parquet(corpusAoutput)
     println("Answers = " + corpusA.count())
-    val corpusQA = spark.read.format("parquet").parquet(corpusQAoutput)
+    val corpusQA = spark.read.parquet(corpusQAoutput)
     println("Q n A = " + corpusQA.count())
   }
 
@@ -167,7 +168,7 @@ object LDAExample {
     corpusQ.createOrReplaceTempView("corpusQ")
 //    println("Questions = " + corpusQ.count())
 //    corpusQ.show(10, false)
-    corpusQ.write.mode(SaveMode.Overwrite).format("parquet").save(corpusQoutput)
+    corpusQ.write.mode(SaveMode.Overwrite).parquet(corpusQoutput)
 
     // Obter Posts com respostas a perguntas sobre Spark
     val stackAnswers = posts
@@ -186,7 +187,7 @@ object LDAExample {
     corpusA.createOrReplaceTempView("corpusA")
 //    println("Answers = " + corpusA.count())
 //    corpusA.show(10, false)
-    corpusA.write.mode(SaveMode.Overwrite).format("parquet").save(corpusAoutput)
+    corpusA.write.mode(SaveMode.Overwrite)parquet(corpusAoutput)
     
     // Obter Posts com perguntas sobre Spark e suas respectivas perguntas
     val sparkQA = sql("""
@@ -201,7 +202,7 @@ object LDAExample {
       .select("id","document")
 //    println("QA = " + corpusQA.count())
 //    corpusQA.show(10, false)
-    corpusQA.write.mode(SaveMode.Overwrite).format("parquet").save(corpusQAoutput)
+    corpusQA.write.mode(SaveMode.Overwrite).parquet(corpusQAoutput)
   }
   
   def lda() {  
