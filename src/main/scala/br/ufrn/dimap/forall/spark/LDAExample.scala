@@ -11,6 +11,7 @@ import org.apache.spark.mllib.linalg.Vector
 import org.apache.spark.mllib.util.MLUtils
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
+import org.apache.spark.storage.StorageLevel._
 import java.time.LocalDateTime
 import java.sql.Timestamp
 
@@ -156,6 +157,7 @@ object LDAExample {
       .withColumn("title_body", concat($"title", lit(" "), $"body"))
       .withColumn("document", expr("cleanDocument(title_body)"))
       .select("id","document")
+    corpusQ.persist(MEMORY_ONLY)
     corpusQ.createOrReplaceTempView("corpusQ")
 //    println("Questions = " + corpusQ.count())
 //    corpusQ.show(10, false)
@@ -175,6 +177,7 @@ object LDAExample {
           ON a.parentId = q.id 
     GROUP BY a.parentId
     """)
+    corpusA.persist(MEMORY_ONLY)
     corpusA.createOrReplaceTempView("corpusA")
 //    println("Answers = " + corpusA.count())
 //    corpusA.show(10, false)
