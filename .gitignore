@@ -7,3 +7,7 @@
 /target/
 .settings/
 .project
+*.parquet
+.cache-main
+.classpath
+resources/Posts-Spark.xml
