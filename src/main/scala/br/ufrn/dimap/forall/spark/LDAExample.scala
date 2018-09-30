@@ -21,17 +21,23 @@ object LDAExample {
 //  val corpusAoutput = "./resources/CorpusA.parquet"
 //  val corpusQAoutput = "./resources/CorpusQA.parquet"
   
-    val resourceInput = "hdfs://master:54310/user/hduser/stackoverflow/Posts.xml"
-    val corpusQoutput = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQ.parquet"
-    val corpusAoutput = "hdfs://master:54310/user/hduser/stackoverflow/CorpusA.parquet"
-    val corpusQAoutput = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQA.parquet"
+  val resourceInput = "hdfs://master:54310/user/hduser/stackoverflow/Posts.xml"
+  val corpusQoutput = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQ.parquet"
+  val corpusAoutput = "hdfs://master:54310/user/hduser/stackoverflow/CorpusA.parquet"
+  val corpusQAoutput = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQA.parquet"
   
-  val spark = SparkSession
+  def main(args: Array[String]) {
+    Logger.getLogger("org").setLevel(Level.ERROR) // Set the log level to only print errors
+    val spark = SparkSession
       .builder
       .appName("LDAExample")
 //      .master("local[*]")
       .getOrCreate()
-  
+    processing(spark)
+    reading(spark)
+    spark.stop()
+  }
+    
   case class Post(
     id:               Int,
     postTypeId:       Int,
@@ -123,25 +129,10 @@ object LDAExample {
       .replaceAll("<pre>.+</pre>", " CODE ") // remove code parts
       .replaceAll("<([^>])+>", " TAG ") // remove tags 
   }
-  
-  def reading() {
-    val corpusQ = spark.read.parquet(corpusQoutput)
-    println("Questions = " + corpusQ.count())
-    val corpusA = spark.read.parquet(corpusAoutput)
-    println("Answers = " + corpusA.count())
-    val corpusQA = spark.read.parquet(corpusQAoutput)
-    println("Q n A = " + corpusQA.count())
-  }
 
-  def main(args: Array[String]) {
-    
-    Logger.getLogger("org").setLevel(Level.ERROR) // Set the log level to only print errors
-    processing()
-    reading()
-    spark.stop()
-  }
   
-  def processing() {
+  
+  def processing(spark: SparkSession) {
   
     val lines = spark.sparkContext.textFile(resourceInput).flatMap(parseXml)
     
@@ -203,6 +194,15 @@ object LDAExample {
 //    println("QA = " + corpusQA.count())
 //    corpusQA.show(10, false)
     corpusQA.write.mode(SaveMode.Overwrite).parquet(corpusQAoutput)
+  }
+  
+  def reading(spark: SparkSession) {
+    val corpusQ = spark.read.parquet(corpusQoutput)
+    println("Questions = " + corpusQ.count())
+    val corpusA = spark.read.parquet(corpusAoutput)
+    println("Answers = " + corpusA.count())
+    val corpusQA = spark.read.parquet(corpusQAoutput)
+    println("Q n A = " + corpusQA.count())
   }
   
   def lda() {  
