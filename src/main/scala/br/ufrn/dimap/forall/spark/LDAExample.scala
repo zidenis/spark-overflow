@@ -175,7 +175,7 @@ object LDAExample {
 //    val sparkAnswers = stackAnswers
 //      .join(sparkQuestions, stackAnswers("parentId") === sparkQuestions("id"), "leftsemi")
     val corpusA = sql("""
-      SELECT a.parentId
+      SELECT a.parentId as id
            , cleanDocument(concat_ws(' ', collect_list(a.body))) as document 
         FROM stackAnswers a 
    LEFT SEMI JOIN corpusQ q 
@@ -193,7 +193,7 @@ object LDAExample {
       SELECT id, q.document qd, a.document ad 
         FROM corpusQ q 
    LEFT JOIN corpusA a 
-          ON q.id = a.parentId
+          ON q.id = a.id
     """)
     val corpusQA = sparkQA
       .withColumn("ad_not_null", coalesce($"ad",lit("")))
