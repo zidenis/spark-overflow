@@ -23,11 +23,13 @@ object LDAExample {
 //  val corpusQoutput = "./resources/CorpusQ.parquet"
 //  val corpusAoutput = "./resources/CorpusA.parquet"
 //  val corpusQAoutput = "./resources/CorpusQA.parquet"
+//  val stopwordsFile = "./resources/stopwords.txt"
   
   val resourceInput = "hdfs://master:54310/user/hduser/stackoverflow/Posts.xml"
   val corpusQoutput = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQ.parquet"
   val corpusAoutput = "hdfs://master:54310/user/hduser/stackoverflow/CorpusA.parquet"
   val corpusQAoutput = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQA.parquet"
+  val stopwordsFile = "hdfs://master:54310/user/hduser/stackoverflow/stopwords.txt"
   
   def main(args: Array[String]) {
     Logger.getLogger("org").setLevel(Level.ERROR) // Set the log level to only print errors
@@ -229,7 +231,7 @@ object LDAExample {
 //    tokenized_df.select("tokens").show(false)
 
     // Removing stopwords
-    val stopwords = spark.sparkContext.textFile("./resources/stopwords.txt").collect()
+    val stopwords = spark.sparkContext.textFile(stopwordsFile).collect()
     var remover = new StopWordsRemover()
       .setStopWords(stopwords)
       .setInputCol("tokens")
