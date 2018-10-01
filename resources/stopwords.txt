@@ -1,3 +1,9 @@
+spark
+tag
+http
+https
+com
+org
 about
 above
 across
@@ -114,7 +120,6 @@ herself
 him
 himself
 his
-how
 however
 hundred
 inc
@@ -252,12 +257,9 @@ via
 was
 well
 were
-what
 whatever
-when
 whence
 whenever
-where
 whereafter
 whereas
 whereby
@@ -265,15 +267,12 @@ wherein
 whereupon
 wherever
 whether
-which
 while
 whither
-who
 whoever
 whole
 whom
 whose
-why
 will
 with
 within
