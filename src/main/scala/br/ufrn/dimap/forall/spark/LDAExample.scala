@@ -19,24 +19,25 @@ import java.sql.Timestamp
 
 object LDAExample {
   
-  val resourceInput = "./resources/Posts-Spark-100.xml"
-  val corpusQoutput = "./resources/CorpusQ.parquet"
-  val corpusAoutput = "./resources/CorpusA.parquet"
-  val corpusQAoutput = "./resources/CorpusQA.parquet"
+//  val resourceInput = "./resources/Posts-Spark-100.xml"
+//  val corpusQoutput = "./resources/CorpusQ.parquet"
+//  val corpusAoutput = "./resources/CorpusA.parquet"
+//  val corpusQAoutput = "./resources/CorpusQA.parquet"
   
-//  val resourceInput = "hdfs://master:54310/user/hduser/stackoverflow/Posts.xml"
-//  val corpusQoutput = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQ.parquet"
-//  val corpusAoutput = "hdfs://master:54310/user/hduser/stackoverflow/CorpusA.parquet"
-//  val corpusQAoutput = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQA.parquet"
+  val resourceInput = "hdfs://master:54310/user/hduser/stackoverflow/Posts.xml"
+  val corpusQoutput = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQ.parquet"
+  val corpusAoutput = "hdfs://master:54310/user/hduser/stackoverflow/CorpusA.parquet"
+  val corpusQAoutput = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQA.parquet"
   
   def main(args: Array[String]) {
     Logger.getLogger("org").setLevel(Level.ERROR) // Set the log level to only print errors
     val spark = SparkSession
       .builder
       .appName("LDAExample")
-      .master("local[*]")
+//      .master("local[*]")
       .getOrCreate()
-    processing(spark)
+      
+//    processing(spark)
     reading(spark)
     spark.stop()
   }
