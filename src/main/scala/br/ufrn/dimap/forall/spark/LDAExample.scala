@@ -5,6 +5,8 @@ import org.apache.log4j.Logger
 import org.apache.spark.ml.feature.CountVectorizer
 import org.apache.spark.ml.feature.RegexTokenizer
 import org.apache.spark.ml.feature.StopWordsRemover
+import org.apache.spark.ml.feature.VectorAssembler
+import org.apache.spark.ml.linalg.SparseVector
 import org.apache.spark.mllib.clustering.LDA
 import org.apache.spark.mllib.clustering.OnlineLDAOptimizer
 import org.apache.spark.mllib.linalg.Vector
@@ -17,22 +19,22 @@ import java.sql.Timestamp
 
 object LDAExample {
   
-//  val resourceInput = "./resources/Posts-Spark-100.xml"
-//  val corpusQoutput = "./resources/CorpusQ.parquet"
-//  val corpusAoutput = "./resources/CorpusA.parquet"
-//  val corpusQAoutput = "./resources/CorpusQA.parquet"
+  val resourceInput = "./resources/Posts-Spark-100.xml"
+  val corpusQoutput = "./resources/CorpusQ.parquet"
+  val corpusAoutput = "./resources/CorpusA.parquet"
+  val corpusQAoutput = "./resources/CorpusQA.parquet"
   
-  val resourceInput = "hdfs://master:54310/user/hduser/stackoverflow/Posts.xml"
-  val corpusQoutput = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQ.parquet"
-  val corpusAoutput = "hdfs://master:54310/user/hduser/stackoverflow/CorpusA.parquet"
-  val corpusQAoutput = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQA.parquet"
+//  val resourceInput = "hdfs://master:54310/user/hduser/stackoverflow/Posts.xml"
+//  val corpusQoutput = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQ.parquet"
+//  val corpusAoutput = "hdfs://master:54310/user/hduser/stackoverflow/CorpusA.parquet"
+//  val corpusQAoutput = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQA.parquet"
   
   def main(args: Array[String]) {
     Logger.getLogger("org").setLevel(Level.ERROR) // Set the log level to only print errors
     val spark = SparkSession
       .builder
       .appName("LDAExample")
-//      .master("local[*]")
+      .master("local[*]")
       .getOrCreate()
     processing(spark)
     reading(spark)
@@ -53,6 +55,8 @@ object LDAExample {
 //    answerCount:      Option[Int],
 //    favoriteCount:    Option[Int]
   )
+  
+  case class Document( id: Int, document: String)
 
   def parseXml(line: String) = {
     try {
@@ -128,11 +132,9 @@ object LDAExample {
       .filter(_ >= ' ') // throw away all control characters.
       .toLowerCase() // put all chars in lowercase
       .replaceAll("<pre>.+</pre>", " CODE ") // remove code parts
-      .replaceAll("<([^>])+>", " TAG ") // remove tags 
+      .replaceAll("<([^>])+>", " TAG ") // remove tags
   }
 
-  
-  
   def processing(spark: SparkSession) {
   
     val lines = spark.sparkContext.textFile(resourceInput).flatMap(parseXml)
@@ -201,141 +203,97 @@ object LDAExample {
   
   def reading(spark: SparkSession) {
     val corpusQ = spark.read.parquet(corpusQoutput)
-    println("Questions = " + corpusQ.count())
+    println("\nAnalyzing Questions")
+    lda(corpusQ, spark)
+//    println("Questions = " + corpusQ.count())
     val corpusA = spark.read.parquet(corpusAoutput)
-    println("Answers = " + corpusA.count())
+    println("\nAnalyzing Answers")
+    lda(corpusA, spark)
+//    println("Answers = " + corpusA.count())
     val corpusQA = spark.read.parquet(corpusQAoutput)
-    println("Q n A = " + corpusQA.count())
+    println("\nAnalyzing Questions + Answers")
+    lda(corpusQA, spark)
+//    println("Q n A = " + corpusQA.count())
   }
   
-  def lda() {  
-    //
-    //    // Set params for RegexTokenizer
-    //    val tokenizer = new RegexTokenizer()
-    //      .setPattern("[\\W_]+")
-    //      .setMinTokenLength(4) // Filter away tokens with length < 3, no original era 4, mas coloquei 3 por causa do termo RDD
-    //      .setInputCol("document") // acho que nao deveriamos desprezar o title
-    //      .setOutputCol("tokens")
-    //
-    //    // Tokenize document
-    //    val tokenized_df = tokenizer.transform(corpus)
-    //
-    ////    tokenized_df.select("tokens").show(false)
-    ////    tokenized_df.show()
-    //
-    //    // List of stopwords
-    //    val stopwords = spark.sparkContext.textFile("./resources/stopwords.txt").collect()
-    //
-    //    // Set params for StopWordsRemover
-    //    var remover = new StopWordsRemover()
-    //      .setStopWords(stopwords) // This parameter is optional
-    //      .setInputCol("tokens")
-    //      .setOutputCol("filtered")
-    //
-    //    // Create new DF with Stopwords removed
-    //    val filtered_df = remover.transform(tokenized_df)
-    //
-    ////    filtered_df.select("filtered").show(false)
-    //
-    //    // Set params for CountVectorizer
-    //    var vectorizer = new CountVectorizer()
-    //      .setInputCol("filtered")
-    //      .setOutputCol("features")
-    //      .setVocabSize(300)
-    //      .setMinDF(1)
-    //      .fit(filtered_df)
-    //
-    //    // Create vector of token counts
-    //    val countVectors = vectorizer.transform(filtered_df).select("id", "features")
-    //
-    ////    countVectors.show(false)
-    //
-    //    val countVectorsMLib = MLUtils.convertVectorColumnsFromML(countVectors, "features")
-    //
-    //    val lda_countVector = countVectorsMLib.map { case Row(id: Long, countVector: Vector) => (id, countVector) }
-    //
-    //    val numTopics = 10
-    //
-    //    // Set LDA params
-    //    val lda = new LDA()
-    //      .setOptimizer(new OnlineLDAOptimizer().setMiniBatchFraction(0.8))
-    //      .setK(numTopics)
-    //      .setMaxIterations(3)
-    //      .setDocConcentration(-1) // use default values
-    //      .setTopicConcentration(-1) // use default values
-    //
-    //    val ldaModel = lda.run(lda_countVector.rdd)
-    //
-    //    // Review Results of LDA model with Online Variational Bayes
-    //    var topicIndices = ldaModel.describeTopics(maxTermsPerTopic = 10)
-    //    var vocabList = vectorizer.vocabulary
-    //    var topics = topicIndices.map {
-    //      case (terms, termWeights) =>
-    //        terms.map(vocabList(_)).zip(termWeights)
-    //    }
-    //    println("First Topics")
-    //    println(s"$numTopics topics:")
-    //    topics.zipWithIndex.foreach {
-    //      case (topic, i) =>
-    //        println(s"TOPIC $i")
-    //        topic.foreach { case (term, weight) => println(s"$term\t$weight") }
-    //        println(s"==========")
-    //    }
+  def lda(corpus : DataFrame, spark: SparkSession) {
+     
+    // Tokenization
+    val tokenizer = new RegexTokenizer()
+      .setPattern("[\\W_]+")
+      .setMinTokenLength(3) // Filter away tokens with length < 3, no original era 4, mas coloquei 3 por causa do termo RDD
+      .setInputCol("document")
+      .setOutputCol("tokens")
+    val tokenized_df = tokenizer.transform(corpus)
+//    tokenized_df.select("tokens").show(false)
 
-    //    val add_stopwords = Array("code", "pre", "true", "false", "string", "int", "apache", "org", "using", "com", "github", "import", "new", "info", "2018", "artifactid", "groupid", "apply", "anonfun", "val", "var", "version", "jar", "href", "https")
-    //
-    //    // Combine newly identified stopwords to our exising list of stopwords
-    //    val new_stopwords = stopwords.union(add_stopwords)
-    //
-    //    // Set Params for StopWordsRemover with new_stopwords
-    //    remover = new StopWordsRemover()
-    //      .setStopWords(new_stopwords)
-    //      .setInputCol("tokens")
-    //      .setOutputCol("filtered")
-    //
-    //    // Create new df with new list of stopwords removed
-    //    val new_filtered_df = remover.transform(tokenized_df)
-    //
-    //    // Set Params for CountVectorizer
-    //    vectorizer = new CountVectorizer()
-    //      .setInputCol("filtered")
-    //      .setOutputCol("features")
-    //      .setVocabSize(10000)
-    //      .setMinDF(5)
-    //      .fit(new_filtered_df)
-    //
-    //    // Create new df of countVectors
-    //    val new_countVectors = vectorizer.transform(new_filtered_df).select("id", "features")
-    //
-    //    val new_countVectorsMLib = MLUtils.convertVectorColumnsFromML(new_countVectors, "features")
-    //
-    //    // Convert DF to RDD
-    //    val new_lda_countVector = new_countVectorsMLib.map { case Row(id: Long, countVector: Vector) => (id, countVector) }
-    //
-    //    // Set LDA parameters
-    //    val new_lda = new LDA()
-    //      .setOptimizer(new OnlineLDAOptimizer().setMiniBatchFraction(0.8))
-    //      .setK(numTopics)
-    //      .setMaxIterations(10)
-    //      .setDocConcentration(-1) // use default values
-    //      .setTopicConcentration(-1) // use default values
-    //
-    //    // Create LDA model with stopwords refiltered
-    //    val new_ldaModel = new_lda.run(new_lda_countVector.rdd)
-    //
-    //    topicIndices = new_ldaModel.describeTopics(maxTermsPerTopic = 10)
-    //    vocabList = vectorizer.vocabulary
-    //    topics = topicIndices.map {
-    //      case (terms, termWeights) =>
-    //        terms.map(vocabList(_)).zip(termWeights)
-    //    }
-    //    println("Topics after remove some words:")
-    //    println(s"$numTopics topics:")
-    //    topics.zipWithIndex.foreach {
-    //      case (topic, i) =>
-    //        println(s"TOPIC $i")
-    //        topic.foreach { case (term, weight) => println(s"$term\t$weight") }
-    //        println(s"==========")
+    // Removing stopwords
+    val stopwords = spark.sparkContext.textFile("./resources/stopwords.txt").collect()
+    var remover = new StopWordsRemover()
+      .setStopWords(stopwords)
+      .setInputCol("tokens")
+      .setOutputCol("filtered")
+    val filtered_df = remover.transform(tokenized_df)
+    filtered_df.persist(MEMORY_ONLY)
+//    filtered_df.select("filtered").show(false)
+
+    // Computing tokens frequencies
+    val filtered_df_combined = filtered_df
+      .select(org.apache.spark.sql.functions.explode(col("filtered")).alias("filtered_aux"))
+      .select(org.apache.spark.sql.functions.collect_list("filtered_aux").alias("filtered")) 
+    var vectorizer = new CountVectorizer()
+      .setInputCol("filtered")
+      .setOutputCol("features")
+      .fit(filtered_df_combined)
+    val countVectors = vectorizer.transform(filtered_df_combined).select("features")
+    val frequency = countVectors.rdd.map(_.getAs[SparseVector]("features")).collect()(0)
+    println("")
+    println("Vocabulary total size = " + vectorizer.vocabulary.length)
+    val tokensFrequency = vectorizer.vocabulary.zip(frequency.toArray)
+    println("Top 100 Tokens:")
+    tokensFrequency.take(100).foreach(println)
+    
+    // Computing tokens frequencies for LDA
+    vectorizer = new CountVectorizer()
+      .setInputCol("filtered")
+      .setOutputCol("features")
+      .setMinDF(3) // Tokens utilizados pelo menos em 2 documentos
+      .fit(filtered_df)
+    val new_countVectors = vectorizer.transform(filtered_df).select("id", "features")
+    val countVectorsMLib = MLUtils.convertVectorColumnsFromML(new_countVectors, "features")
+    import spark.implicits._
+    val lda_countVector = countVectorsMLib.map { case Row(id: Int, countVector: Vector) => (id.toLong, countVector) }
+    
+    // LDA
+    val numTopics = 10
+    val termsPerTopic = 20
+    val lda = new LDA()
+      .setOptimizer(new OnlineLDAOptimizer().setMiniBatchFraction(0.8))
+      .setK(numTopics)
+      .setMaxIterations(3)
+      .setDocConcentration(-1) // use default values
+      .setTopicConcentration(-1) // use default values
+    val ldaModel = lda.run(lda_countVector.rdd)
+    var topicIndices = ldaModel.describeTopics(maxTermsPerTopic = termsPerTopic)
+    var vocabList = vectorizer.vocabulary
+    var topics = topicIndices.map {
+      case (terms, termWeights) =>
+        terms.map(vocabList(_)).zip(termWeights)
+      }
+    
+    println("")
+    topics.zipWithIndex.foreach {
+      case (topic, i) =>
+        println(s"TOPIC ${i+1}")
+        topic.foreach { 
+          case (term, weight) => {
+            print(s"$term\t")
+            if (term.length() < 9) print("\t")
+            println(s"$weight") 
+          }
+        }
+        println(s"==========")
+    }
+    
   }
-  
 }
