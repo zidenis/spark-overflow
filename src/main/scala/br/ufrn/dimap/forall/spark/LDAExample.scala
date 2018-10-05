@@ -190,7 +190,7 @@ object LDAExample {
     
     // Obter Posts com perguntas sobre Spark e suas respectivas perguntas
     val sparkQA = sql("""
-      SELECT id, q.document qd, a.document ad 
+      SELECT q.id, q.document qd, a.document ad 
         FROM corpusQ q 
    LEFT JOIN corpusA a 
           ON q.id = a.id
@@ -273,7 +273,7 @@ object LDAExample {
     val lda = new LDA()
       .setOptimizer(new OnlineLDAOptimizer().setMiniBatchFraction(0.8))
       .setK(numTopics)
-      .setMaxIterations(3)
+      .setMaxIterations(30)
       .setDocConcentration(-1) // use default values
       .setTopicConcentration(-1) // use default values
     val ldaModel = lda.run(lda_countVector.rdd)
