@@ -9,6 +9,7 @@ import org.apache.spark.ml.feature.VectorAssembler
 import org.apache.spark.ml.linalg.SparseVector
 import org.apache.spark.mllib.clustering.LDA
 import org.apache.spark.mllib.clustering.OnlineLDAOptimizer
+import org.apache.spark.mllib.clustering.DistributedLDAModel
 import org.apache.spark.mllib.linalg.Vector
 import org.apache.spark.mllib.util.MLUtils
 import org.apache.spark.sql._
@@ -19,24 +20,24 @@ import java.sql.Timestamp
 
 object LDAExample {
   
-//  val resourceInput = "./resources/Posts-Spark-100.xml"
-//  val corpusQoutput = "./resources/CorpusQ.parquet"
-//  val corpusAoutput = "./resources/CorpusA.parquet"
-//  val corpusQAoutput = "./resources/CorpusQA.parquet"
-//  val stopwordsFile = "./resources/stopwords.txt"
+  val resourceInput = "./resources/Posts-Spark-100.xml"
+  val corpusQoutput = "./resources/CorpusQ.parquet"
+  val corpusAoutput = "./resources/CorpusA.parquet"
+  val corpusQAoutput = "./resources/CorpusQA.parquet"
+  val stopwordsFile = "./resources/stopwords.txt"
   
-  val resourceInput = "hdfs://master:54310/user/hduser/stackoverflow/Posts.xml"
-  val corpusQoutput = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQ.parquet"
-  val corpusAoutput = "hdfs://master:54310/user/hduser/stackoverflow/CorpusA.parquet"
-  val corpusQAoutput = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQA.parquet"
-  val stopwordsFile = "hdfs://master:54310/user/hduser/stackoverflow/stopwords.txt"
+//  val resourceInput = "hdfs://master:54310/user/hduser/stackoverflow/Posts.xml"
+//  val corpusQoutput = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQ.parquet"
+//  val corpusAoutput = "hdfs://master:54310/user/hduser/stackoverflow/CorpusA.parquet"
+//  val corpusQAoutput = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQA.parquet"
+//  val stopwordsFile = "hdfs://master:54310/user/hduser/stackoverflow/stopwords.txt"
   
   def main(args: Array[String]) {
     Logger.getLogger("org").setLevel(Level.ERROR) // Set the log level to only print errors
     val spark = SparkSession
       .builder
       .appName("LDAExample")
-//      .master("local[*]")
+      .master("local[*]")
       .getOrCreate()
       
 //    processing(spark)
@@ -206,15 +207,16 @@ object LDAExample {
   
   def reading(spark: SparkSession) {
     val corpusQ = spark.read.parquet(corpusQoutput)
-    println("\nAnalyzing Questions")
-    lda(corpusQ, spark)
+//    println("\nAnalyzing Questions")
+//    lda(corpusQ, spark)
 //    println("Questions = " + corpusQ.count())
-    val corpusA = spark.read.parquet(corpusAoutput)
-    println("\nAnalyzing Answers")
-    lda(corpusA, spark)
+//    val corpusA = spark.read.parquet(corpusAoutput)
+//    println("\nAnalyzing Answers")
+//    lda(corpusA, spark)
 //    println("Answers = " + corpusA.count())
     val corpusQA = spark.read.parquet(corpusQAoutput)
     println("\nAnalyzing Questions + Answers")
+//    corpusQA.show(false)
     lda(corpusQA, spark)
 //    println("Q n A = " + corpusQA.count())
   }
@@ -229,7 +231,7 @@ object LDAExample {
       .setOutputCol("tokens")
     val tokenized_df = tokenizer.transform(corpus)
 //    tokenized_df.select("tokens").show(false)
-
+    
     // Removing stopwords
     val stopwords = spark.sparkContext.textFile(stopwordsFile).collect()
     var remover = new StopWordsRemover()
@@ -239,7 +241,7 @@ object LDAExample {
     val filtered_df = remover.transform(tokenized_df)
     filtered_df.persist(MEMORY_ONLY)
 //    filtered_df.select("filtered").show(false)
-
+    
     // Computing tokens frequencies
     val filtered_df_combined = filtered_df
       .select(org.apache.spark.sql.functions.explode(col("filtered")).alias("filtered_aux"))
@@ -253,14 +255,14 @@ object LDAExample {
     println("")
     println("Vocabulary total size = " + vectorizer.vocabulary.length)
     val tokensFrequency = vectorizer.vocabulary.zip(frequency.toArray)
-    println("Top 100 Tokens:")
-    tokensFrequency.take(100).foreach(println)
+    println("Top 20 Tokens:")
+    tokensFrequency.take(20).foreach(println)
     
     // Computing tokens frequencies for LDA
     vectorizer = new CountVectorizer()
       .setInputCol("filtered")
       .setOutputCol("features")
-      .setMinDF(3) // Tokens utilizados pelo menos em 2 documentos
+      .setMinDF(3) // Tokens utilizados pelo menos em 3 documentos
       .fit(filtered_df)
     val new_countVectors = vectorizer.transform(filtered_df).select("id", "features")
     val countVectorsMLib = MLUtils.convertVectorColumnsFromML(new_countVectors, "features")
@@ -268,35 +270,48 @@ object LDAExample {
     val lda_countVector = countVectorsMLib.map { case Row(id: Int, countVector: Vector) => (id.toLong, countVector) }
     
     // LDA
-    val numTopics = 10
+    val numTopics = 10 // default 10
+    val alpha = -1 // choose a low alpha if your documents are made up of a few dominant topics 
+    val beta = -1 // choose a low beta if your topics are made up of a few dominant words
+    val maxIterations = 2
     val termsPerTopic = 20
     val lda = new LDA()
-      .setOptimizer(new OnlineLDAOptimizer().setMiniBatchFraction(0.8))
+      //.setOptimizer(new OnlineLDAOptimizer().setMiniBatchFraction(0.8))
+      .setOptimizer("em")
       .setK(numTopics)
-      .setMaxIterations(30)
-      .setDocConcentration(-1) // use default values
-      .setTopicConcentration(-1) // use default values
+      .setMaxIterations(maxIterations)
+      .setDocConcentration(alpha) // use default values
+      .setTopicConcentration(beta) // use default values
     val ldaModel = lda.run(lda_countVector.rdd)
-    var topicIndices = ldaModel.describeTopics(maxTermsPerTopic = termsPerTopic)
+    
+    var topicsArray = ldaModel.describeTopics(maxTermsPerTopic = termsPerTopic)
     var vocabList = vectorizer.vocabulary
-    var topics = topicIndices.map {
-      case (terms, termWeights) =>
-        terms.map(vocabList(_)).zip(termWeights)
+    var topics = topicsArray.map {
+      case (term, termWeight) =>
+        term.map(vocabList(_)).zip(termWeight)
       }
+    val distLDAModel = ldaModel.asInstanceOf[DistributedLDAModel]
+    var topDocs = distLDAModel.topDocumentsPerTopic(10)
     
     println("")
     topics.zipWithIndex.foreach {
       case (topic, i) =>
         println(s"TOPIC ${i+1}")
+        println("---")
         topic.foreach { 
           case (term, weight) => {
-            print(s"$term\t")
-            if (term.length() < 9) print("\t")
-            println(s"$weight") 
+            print(s"$term (")
+            print(f"$weight%2.4f) ") 
+          }
+        }
+        println("\n---")
+        val temp = (topDocs(i)._1).zip(topDocs(i)._2)
+        temp.foreach {
+          case (id, weight) => {
+            println(f"$weight%2.4f : $id ")
           }
         }
         println(s"==========")
     }
-    
   }
 }
