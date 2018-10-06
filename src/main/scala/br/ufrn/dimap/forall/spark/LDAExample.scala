@@ -40,8 +40,8 @@ object LDAExample {
       .master("local[*]")
       .getOrCreate()
       
-//    processing(spark)
-    reading(spark)
+    processing(spark)
+//    reading(spark)
     spark.stop()
   }
     
@@ -135,8 +135,9 @@ object LDAExample {
     document
       .filter(_ >= ' ') // throw away all control characters.
       .toLowerCase() // put all chars in lowercase
-      .replaceAll("<pre>.+</pre>", " CODE ") // remove code parts
-      .replaceAll("<([^>])+>", " TAG ") // remove tags
+      .replaceAll("<pre>.+</pre>", " ") // remove code parts
+      .replaceAll("<([^>])+>", " ") // remove tags
+      .replaceAll("\\d+((\\.\\d+)?)*", " ") // remove numbers like 2018, 1.2.1 
   }
 
   def processing(spark: SparkSession) {
@@ -162,11 +163,11 @@ object LDAExample {
     val corpusQ = sparkQuestions
       .withColumn("title_body", concat($"title", lit(" "), $"body"))
       .withColumn("document", expr("cleanDocument(title_body)"))
-      .select("id","document")
+      .select("id","title","document")
     corpusQ.persist(MEMORY_ONLY)
     corpusQ.createOrReplaceTempView("corpusQ")
 //    println("Questions = " + corpusQ.count())
-//    corpusQ.show(10, false)
+//    corpusQ.show(20, false)
     corpusQ.write.mode(SaveMode.Overwrite).parquet(corpusQoutput)
 
     // Obter Posts com respostas a perguntas sobre Spark
@@ -176,12 +177,17 @@ object LDAExample {
 //    val sparkAnswers = stackAnswers
 //      .join(sparkQuestions, stackAnswers("parentId") === sparkQuestions("id"), "leftsemi")
     val corpusA = sql("""
+      SELECT answers.id, corpusQ.title, answers.document 
+        FROM (
       SELECT a.parentId as id
            , cleanDocument(concat_ws(' ', collect_list(a.body))) as document 
         FROM stackAnswers a 
    LEFT SEMI JOIN corpusQ q 
           ON a.parentId = q.id 
     GROUP BY a.parentId
+        ) as answers
+   LEFT JOIN corpusQ
+          ON answers.id = corpusQ.id
     """)
     corpusA.persist(MEMORY_ONLY)
     corpusA.createOrReplaceTempView("corpusA")
@@ -191,7 +197,7 @@ object LDAExample {
     
     // Obter Posts com perguntas sobre Spark e suas respectivas perguntas
     val sparkQA = sql("""
-      SELECT q.id, q.document qd, a.document ad 
+      SELECT q.id, q.title, q.document qd, a.document ad 
         FROM corpusQ q 
    LEFT JOIN corpusA a 
           ON q.id = a.id
@@ -199,7 +205,7 @@ object LDAExample {
     val corpusQA = sparkQA
       .withColumn("ad_not_null", coalesce($"ad",lit("")))
       .withColumn("document", concat($"qd", lit(" "), $"ad_not_null"))
-      .select("id","document")
+      .select("id","title","document")
 //    println("QA = " + corpusQA.count())
 //    corpusQA.show(10, false)
     corpusQA.write.mode(SaveMode.Overwrite).parquet(corpusQAoutput)
