@@ -40,8 +40,8 @@ object LDAExample {
       .master("local[*]")
       .getOrCreate()
       
-    processing(spark)
-//    reading(spark)
+//    processing(spark)
+    reading(spark)
     spark.stop()
   }
     
@@ -213,26 +213,35 @@ object LDAExample {
   
   def reading(spark: SparkSession) {
     val corpusQ = spark.read.parquet(corpusQoutput)
-//    println("\nAnalyzing Questions")
-//    lda(corpusQ, spark)
+    println("\nAnalyzing Questions")
+    lda(corpusQ, spark)
 //    println("Questions = " + corpusQ.count())
 //    val corpusA = spark.read.parquet(corpusAoutput)
 //    println("\nAnalyzing Answers")
 //    lda(corpusA, spark)
 //    println("Answers = " + corpusA.count())
-    val corpusQA = spark.read.parquet(corpusQAoutput)
-    println("\nAnalyzing Questions + Answers")
+//    val corpusQA = spark.read.parquet(corpusQAoutput)
+//    println("\nAnalyzing Questions + Answers")
 //    corpusQA.show(false)
-    lda(corpusQA, spark)
+//    lda(corpusQA, spark)
 //    println("Q n A = " + corpusQA.count())
   }
   
   def lda(corpus : DataFrame, spark: SparkSession) {
-     
+    val minTermLenght = 3  // A term should have at least minTermLenght characters
+    val qtyOfTopTerms = 20 // how many top terms should be shown in output
+    val termMinDocFreq = 3 // minimum number of different documents a term must appear in to be included in the vocabulary
+    val qtyLDATopics = 10 // number of LDA latent topics
+    val alpha = -1 // choose a low alpha if your documents are made up of a few dominant topics 
+    val beta = -1  // choose a low beta if your topics are made up of a few dominant words
+    val maxIterations = 2 // number of LDA training iterations
+    val termsPerTopic = 20 // how many terms per topic should be shown in output 
+    val qtyTopDocPerTopic = 10 // how many top documents per topic should be shown in output
+    
     // Tokenization
     val tokenizer = new RegexTokenizer()
       .setPattern("[\\W_]+")
-      .setMinTokenLength(3) // Filter away tokens with length < 3, no original era 4, mas coloquei 3 por causa do termo RDD
+      .setMinTokenLength(minTermLenght) // Filter away tokens with length < minTokenLenght
       .setInputCol("document")
       .setOutputCol("tokens")
     val tokenized_df = tokenizer.transform(corpus)
@@ -261,14 +270,14 @@ object LDAExample {
     println("")
     println("Vocabulary total size = " + vectorizer.vocabulary.length)
     val tokensFrequency = vectorizer.vocabulary.zip(frequency.toArray)
-    println("Top 20 Tokens:")
-    tokensFrequency.take(20).foreach(println)
+    println(s"Top $qtyOfTopTerms tokens:")
+    tokensFrequency.take(qtyOfTopTerms).foreach(println)
     
     // Computing tokens frequencies for LDA
     vectorizer = new CountVectorizer()
       .setInputCol("filtered")
       .setOutputCol("features")
-      .setMinDF(3) // Tokens utilizados pelo menos em 3 documentos
+      .setMinDF(termMinDocFreq)
       .fit(filtered_df)
     val new_countVectors = vectorizer.transform(filtered_df).select("id", "features")
     val countVectorsMLib = MLUtils.convertVectorColumnsFromML(new_countVectors, "features")
@@ -276,15 +285,10 @@ object LDAExample {
     val lda_countVector = countVectorsMLib.map { case Row(id: Int, countVector: Vector) => (id.toLong, countVector) }
     
     // LDA
-    val numTopics = 10 // default 10
-    val alpha = -1 // choose a low alpha if your documents are made up of a few dominant topics 
-    val beta = -1 // choose a low beta if your topics are made up of a few dominant words
-    val maxIterations = 2
-    val termsPerTopic = 20
     val lda = new LDA()
       //.setOptimizer(new OnlineLDAOptimizer().setMiniBatchFraction(0.8))
       .setOptimizer("em")
-      .setK(numTopics)
+      .setK(qtyLDATopics)
       .setMaxIterations(maxIterations)
       .setDocConcentration(alpha) // use default values
       .setTopicConcentration(beta) // use default values
@@ -297,7 +301,7 @@ object LDAExample {
         term.map(vocabList(_)).zip(termWeight)
       }
     val distLDAModel = ldaModel.asInstanceOf[DistributedLDAModel]
-    var topDocs = distLDAModel.topDocumentsPerTopic(10)
+    var topDocs = distLDAModel.topDocumentsPerTopic(qtyTopDocPerTopic)
     
     println("")
     topics.zipWithIndex.foreach {
@@ -307,14 +311,15 @@ object LDAExample {
         topic.foreach { 
           case (term, weight) => {
             print(s"$term (")
-            print(f"$weight%2.4f) ") 
+            print(f"$weight%2.3f) ") 
           }
         }
         println("\n---")
         val temp = (topDocs(i)._1).zip(topDocs(i)._2)
         temp.foreach {
           case (id, weight) => {
-            println(f"$weight%2.4f : $id ")
+            print(f"$weight%2.3f : $id : ")
+            println(corpus.where($"id" === id).select("title").first().getAs[String]("title"))
           }
         }
         println(s"==========")
