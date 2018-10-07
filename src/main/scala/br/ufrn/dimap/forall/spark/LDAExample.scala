@@ -20,27 +20,27 @@ import java.sql.Timestamp
 
 object LDAExample {
   
-//  val resourceInput = "./resources/Posts-Spark-100.xml"
-//  val corpusQoutput = "./resources/CorpusQ.parquet"
-//  val corpusAoutput = "./resources/CorpusA.parquet"
-//  val corpusQAoutput = "./resources/CorpusQA.parquet"
-//  val stopwordsFile = "./resources/stopwords.txt"
+  val resourceInput = "./resources/Posts-Spark-100.xml"
+  val corpusQoutput = "./resources/CorpusQ.parquet"
+  val corpusAoutput = "./resources/CorpusA.parquet"
+  val corpusQAoutput = "./resources/CorpusQA.parquet"
+  val stopwordsFile = "./resources/stopwords.txt"
   
-  val resourceInput = "hdfs://master:54310/user/hduser/stackoverflow/Posts.xml"
-  val corpusQoutput = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQ.parquet"
-  val corpusAoutput = "hdfs://master:54310/user/hduser/stackoverflow/CorpusA.parquet"
-  val corpusQAoutput = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQA.parquet"
-  val stopwordsFile = "hdfs://master:54310/user/hduser/stackoverflow/stopwords.txt"
+//  val resourceInput = "hdfs://master:54310/user/hduser/stackoverflow/Posts.xml"
+//  val corpusQoutput = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQ.parquet"
+//  val corpusAoutput = "hdfs://master:54310/user/hduser/stackoverflow/CorpusA.parquet"
+//  val corpusQAoutput = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQA.parquet"
+//  val stopwordsFile = "hdfs://master:54310/user/hduser/stackoverflow/stopwords.txt"
   
   def main(args: Array[String]) {
     Logger.getLogger("org").setLevel(Level.ERROR) // Set the log level to only print errors
     val spark = SparkSession
       .builder
       .appName("LDAExample")
-//      .master("local[*]")
+      .master("local[*]")
       .getOrCreate()
       
-    processing(spark)
+//    processing(spark)
     reading(spark)
     spark.stop()
   }
@@ -215,16 +215,15 @@ object LDAExample {
     val corpusQ = spark.read.parquet(corpusQoutput)
     println("\nAnalyzing Questions")
     lda(corpusQ, spark)
-//    println("Questions = " + corpusQ.count())
-    val corpusA = spark.read.parquet(corpusAoutput)
-    println("\nAnalyzing Answers")
-    lda(corpusA, spark)
-//    println("Answers = " + corpusA.count())
-    val corpusQA = spark.read.parquet(corpusQAoutput)
-    println("\nAnalyzing Questions + Answers")
-    corpusQA.show(false)
-    lda(corpusQA, spark)
-//    println("Q n A = " + corpusQA.count())
+////    println("Questions = " + corpusQ.count())
+//    val corpusA = spark.read.parquet(corpusAoutput)
+//    println("\nAnalyzing Answers")
+//    lda(corpusA, spark)
+////    println("Answers = " + corpusA.count())
+//    val corpusQA = spark.read.parquet(corpusQAoutput)
+//    println("\nAnalyzing Questions + Answers")
+//    lda(corpusQA, spark)
+////    println("Q n A = " + corpusQA.count())
   }
   
   def lda(corpus : DataFrame, spark: SparkSession) {
@@ -268,7 +267,9 @@ object LDAExample {
     val countVectors = vectorizer.transform(filtered_df_combined).select("features")
     val frequency = countVectors.rdd.map(_.getAs[SparseVector]("features")).collect()(0)
     println("")
-    println("Vocabulary total size = " + vectorizer.vocabulary.length)
+    println("Corpus size = " + corpus.count())
+    println("Vocabulary size = " + vectorizer.vocabulary.length)
+    println("")
     val tokensFrequency = vectorizer.vocabulary.zip(frequency.toArray)
     println(s"Top $qtyOfTopTerms tokens:")
     tokensFrequency.take(qtyOfTopTerms).foreach(println)
@@ -293,6 +294,7 @@ object LDAExample {
       .setDocConcentration(alpha) // use default values
       .setTopicConcentration(beta) // use default values
     val ldaModel = lda.run(lda_countVector.rdd)
+    
     
     var topicsArray = ldaModel.describeTopics(maxTermsPerTopic = termsPerTopic)
     var vocabList = vectorizer.vocabulary
