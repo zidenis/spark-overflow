@@ -20,11 +20,11 @@ import java.sql.Timestamp
 
 object LDAExample {
   
-  val resourceInput = "./resources/Posts-Spark-100.xml"
-  val corpusQoutput = "./resources/CorpusQ.parquet"
-  val corpusAoutput = "./resources/CorpusA.parquet"
-  val corpusQAoutput = "./resources/CorpusQA.parquet"
-  val stopwordsFile = "./resources/stopwords.txt"
+//  val resourceInput = "./resources/Posts-Spark-100.xml"
+//  val corpusQoutput = "./resources/CorpusQ.parquet"
+//  val corpusAoutput = "./resources/CorpusA.parquet"
+//  val corpusQAoutput = "./resources/CorpusQA.parquet"
+//  val stopwordsFile = "./resources/stopwords.txt"
   
 //  val resourceInput = "hdfs://master:54310/user/hduser/stackoverflow/Posts.xml"
 //  val corpusQoutput = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQ.parquet"
@@ -32,16 +32,36 @@ object LDAExample {
 //  val corpusQAoutput = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQA.parquet"
 //  val stopwordsFile = "hdfs://master:54310/user/hduser/stackoverflow/stopwords.txt"
   
+  case class Params(
+    resourceInput : String = "./resources/Posts-Spark-100.xml"
+  , corpusQoutput : String = "./resources/CorpusQ.parquet"
+  , corpusAoutput : String = "./resources/CorpusA.parquet"
+  , corpusQAoutput: String = "./resources/CorpusQA.parquet"
+  , stopwordsFile : String = "./resources/stopwords.txt"
+  , minTermLenght : Int = 3  // A term should have at least minTermLenght characters
+  , qtyOfTopTerms : Int = 20 // how many top terms should be shown in output
+  , termMinDocFreq: Int = 3  // minimum number of different documents a term must appear in to be included in the vocabulary
+  , qtyLDATopics  : Int = 10 // number of LDA latent topics
+  , alpha         : Int = -1 // choose a low alpha if your documents are made up of a few dominant topics 
+  , beta          : Int = -1 // choose a low beta if your topics are made up of a few dominant words
+  , maxIterations : Int = 30 // number of LDA training iterations
+  , termsPerTopic : Int = 20 // how many terms per topic should be shown in output 
+  , topDocPerTopic: Int = 20 // how many top documents per topic should be shown in output
+  )
+  
   def main(args: Array[String]) {
     Logger.getLogger("org").setLevel(Level.ERROR) // Set the log level to only print errors
+    
+    val params = Params()
+
     val spark = SparkSession
       .builder
       .appName("LDAExample")
       .master("local[*]")
       .getOrCreate()
       
-//    processing(spark)
-    reading(spark)
+//    processing(spark, params)
+    reading(spark, params)
     spark.stop()
   }
     
@@ -140,9 +160,9 @@ object LDAExample {
       .replaceAll("\\d+((\\.\\d+)?)*", " ") // remove numbers like 2018, 1.2.1 
   }
 
-  def processing(spark: SparkSession) {
+  def processing(spark: SparkSession, params: Params) {
   
-    val lines = spark.sparkContext.textFile(resourceInput).flatMap(parseXml)
+    val lines = spark.sparkContext.textFile(params.resourceInput).flatMap(parseXml)
     
     import spark.implicits._
     import spark.sql
@@ -168,7 +188,7 @@ object LDAExample {
     corpusQ.createOrReplaceTempView("corpusQ")
 //    println("Questions = " + corpusQ.count())
 //    corpusQ.show(20, false)
-    corpusQ.write.mode(SaveMode.Overwrite).parquet(corpusQoutput)
+    corpusQ.write.mode(SaveMode.Overwrite).parquet(params.corpusQoutput)
 
     // Obter Posts com respostas a perguntas sobre Spark
     val stackAnswers = posts
@@ -193,7 +213,7 @@ object LDAExample {
     corpusA.createOrReplaceTempView("corpusA")
 //    println("Answers = " + corpusA.count())
 //    corpusA.show(10, false)
-    corpusA.write.mode(SaveMode.Overwrite)parquet(corpusAoutput)
+    corpusA.write.mode(SaveMode.Overwrite)parquet(params.corpusAoutput)
     
     // Obter Posts com perguntas sobre Spark e suas respectivas perguntas
     val sparkQA = sql("""
@@ -208,13 +228,13 @@ object LDAExample {
       .select("id","title","document")
 //    println("QA = " + corpusQA.count())
 //    corpusQA.show(10, false)
-    corpusQA.write.mode(SaveMode.Overwrite).parquet(corpusQAoutput)
+    corpusQA.write.mode(SaveMode.Overwrite).parquet(params.corpusQAoutput)
   }
   
-  def reading(spark: SparkSession) {
-    val corpusQ = spark.read.parquet(corpusQoutput)
+  def reading(spark: SparkSession, params: Params) {
+    val corpusQ = spark.read.parquet(params.corpusQoutput)
     println("\nAnalyzing Questions")
-    lda(corpusQ, spark)
+    lda(corpusQ, spark, params)
 ////    println("Questions = " + corpusQ.count())
 //    val corpusA = spark.read.parquet(corpusAoutput)
 //    println("\nAnalyzing Answers")
@@ -226,28 +246,20 @@ object LDAExample {
 ////    println("Q n A = " + corpusQA.count())
   }
   
-  def lda(corpus : DataFrame, spark: SparkSession) {
-    val minTermLenght = 3  // A term should have at least minTermLenght characters
-    val qtyOfTopTerms = 20 // how many top terms should be shown in output
-    val termMinDocFreq = 3 // minimum number of different documents a term must appear in to be included in the vocabulary
-    val qtyLDATopics = 10 // number of LDA latent topics
-    val alpha = -1 // choose a low alpha if your documents are made up of a few dominant topics 
-    val beta = -1  // choose a low beta if your topics are made up of a few dominant words
-    val maxIterations = 30 // number of LDA training iterations
-    val termsPerTopic = 20 // how many terms per topic should be shown in output 
-    val qtyTopDocPerTopic = 20 // how many top documents per topic should be shown in output
+  def lda(corpus : DataFrame, spark: SparkSession, params: Params) {
+    
     
     // Tokenization
     val tokenizer = new RegexTokenizer()
       .setPattern("[\\W_]+")
-      .setMinTokenLength(minTermLenght) // Filter away tokens with length < minTokenLenght
+      .setMinTokenLength(params.minTermLenght) // Filter away tokens with length < minTokenLenght
       .setInputCol("document")
       .setOutputCol("tokens")
     val tokenized_df = tokenizer.transform(corpus)
 //    tokenized_df.select("tokens").show(false)
     
     // Removing stopwords
-    val stopwords = spark.sparkContext.textFile(stopwordsFile).collect()
+    val stopwords = spark.sparkContext.textFile(params.stopwordsFile).collect()
     var remover = new StopWordsRemover()
       .setStopWords(stopwords)
       .setInputCol("tokens")
@@ -271,14 +283,14 @@ object LDAExample {
     println("Vocabulary size = " + vectorizer.vocabulary.length)
     println("")
     val tokensFrequency = vectorizer.vocabulary.zip(frequency.toArray)
-    println(s"Top $qtyOfTopTerms tokens:")
-    tokensFrequency.take(qtyOfTopTerms).foreach(println)
+    println(s"Top $params.qtyOfTopTerms tokens:")
+    tokensFrequency.take(params.qtyOfTopTerms).foreach(println)
     
     // Computing tokens frequencies for LDA
     vectorizer = new CountVectorizer()
       .setInputCol("filtered")
       .setOutputCol("features")
-      .setMinDF(termMinDocFreq)
+      .setMinDF(params.termMinDocFreq)
       .fit(filtered_df)
     val new_countVectors = vectorizer.transform(filtered_df).select("id", "features")
     val countVectorsMLib = MLUtils.convertVectorColumnsFromML(new_countVectors, "features")
@@ -289,21 +301,21 @@ object LDAExample {
     val lda = new LDA()
       //.setOptimizer(new OnlineLDAOptimizer().setMiniBatchFraction(0.8))
       .setOptimizer("em")
-      .setK(qtyLDATopics)
-      .setMaxIterations(maxIterations)
-      .setDocConcentration(alpha) // use default values
-      .setTopicConcentration(beta) // use default values
+      .setK(params.qtyLDATopics)
+      .setMaxIterations(params.maxIterations)
+      .setDocConcentration(params.alpha) // use default values
+      .setTopicConcentration(params.beta) // use default values
     val ldaModel = lda.run(lda_countVector.rdd)
     
     
-    var topicsArray = ldaModel.describeTopics(maxTermsPerTopic = termsPerTopic)
+    var topicsArray = ldaModel.describeTopics(maxTermsPerTopic = params.termsPerTopic)
     var vocabList = vectorizer.vocabulary
     var topics = topicsArray.map {
       case (term, termWeight) =>
         term.map(vocabList(_)).zip(termWeight)
       }
     val distLDAModel = ldaModel.asInstanceOf[DistributedLDAModel]
-    var topDocs = distLDAModel.topDocumentsPerTopic(qtyTopDocPerTopic)
+    var topDocs = distLDAModel.topDocumentsPerTopic(params.topDocPerTopic)
     
     println("")
     topics.zipWithIndex.foreach {
