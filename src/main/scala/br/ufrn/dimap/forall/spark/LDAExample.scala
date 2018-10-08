@@ -39,17 +39,17 @@ object LDAExample {
   , val minTermLenght : Int = 3  // A term should have at least minTermLenght characters to be considered as token
   , val qtyOfTopTerms : Int = 20 // how many top terms should be printed on output
   , val termMinDocFreq: Int = 3  // minimum number of different documents a term must appear in to be included in the vocabulary
-  , var qtyLDATopics  : Int = 100 // number of LDA latent topics
+  , var qtyLDATopics  : Int = 15 // number of LDA latent topics
   , val minQtyLDATop  : Int = 5
   , val alpha         : Int = -1 // LDA dirichlet prior probability placed on document-topic distribution. Choose a low alpha if your documents are made up of a few dominant topics 
   , val beta          : Int = -1 // LDA dirichlet prior probability placed on topic-word distribution. Choose a low beta if your topics are made up of a few dominant words
   , val maxIterations : Int = 20 // number of LDA training iterations
   , val termsPerTopic : Int = 20 // how many terms per topic should be printed on output 
   , val topDocPerTopic: Int = 20 // how many top documents per topic should be printed on output
-  , val prtTopTerms   : Boolean = false
-  , val prtTopDocsPerT: Boolean = false
+  , val prtTopTerms   : Boolean = true
+  , val prtTopDocsPerT: Boolean = true
   , val prtStats      : Boolean = true
-  , val describeTopics: Boolean = false
+  , val describeTopics: Boolean = true
   )
   
   def main(args: Array[String]) {
@@ -287,7 +287,7 @@ object LDAExample {
     }
     
     // Runs one LDA experiment varying the number of desired Topics 
-    (params.minQtyLDATop to params.qtyLDATopics).foreach { 
+    Range.inclusive(params.minQtyLDATop, params.qtyLDATopics, 5).foreach { 
       case i => {
         params.qtyLDATopics = i
         lda(filtered_df, corpus, spark, params)
