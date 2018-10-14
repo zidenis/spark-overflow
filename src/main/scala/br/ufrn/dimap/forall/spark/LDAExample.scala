@@ -43,14 +43,13 @@ object LDAExample {
   , val termMinDocFreq: Int = 3  // minimum number of different documents a term must appear in to be included in the vocabulary
   , var qtyLDATopics  : Int = 40 // number of LDA latent topics
   , val minQtyLDATop  : Int = 20
-  , val optimizer     : String = "online"
-  , val alpha         : Double = 0.01 // LDA dirichlet prior probability placed on document-topic distribution. Choose a low alpha if your documents are made up of a few dominant topics 
-  , val beta          : Double = 0.01 // LDA dirichlet prior probability placed on topic-word distribution. Choose a low beta if your topics are made up of a few dominant words
+  , val optimizer     : String = "em"
+  , val alpha         : Double = -1 // LDA dirichlet prior probability placed on document-topic distribution. Choose a low alpha if your documents are made up of a few dominant topics 
+  , val beta          : Double = -1 // LDA dirichlet prior probability placed on topic-word distribution. Choose a low beta if your topics are made up of a few dominant words
   , val maxIterations : Int = 1000 // number of LDA training iterations
   , val termsPerTopic : Int = 20 // how many terms per topic should be printed on output 
-  , val topDocPerTopic: Int = 20 // how many top documents per topic should be printed on output
-  , val prtTopTerms   : Boolean = true
-  , val prtTopDocsPerT: Boolean = false 
+  , val topDocPerTopic: Int = 5 // how many top documents per topic should be printed on output
+  , val prtTopTerms   : Boolean = false
   , val prtStats      : Boolean = true
   , val describeTopics: Boolean = true
   )
@@ -343,7 +342,6 @@ object LDAExample {
       .setTopicConcentration(params.beta) 
     val lda_countVectorRDD = lda_countVector.rdd
     val ldaModel = lda.run(lda_countVectorRDD)
-        
     // DecribeTopics
     if (params.describeTopics) {
       var topicsArray = ldaModel.describeTopics(maxTermsPerTopic = params.termsPerTopic)
@@ -363,7 +361,7 @@ object LDAExample {
               println(f"$weight%2.3f) ") 
             }
           }
-          if (params.prtTopDocsPerT && params.optimizer.equals("em")) {
+          if (params.topDocPerTopic > 0 && params.optimizer.equals("em")) {
             val distLDAModel = ldaModel.asInstanceOf[DistributedLDAModel]
             var topDocs = distLDAModel.topDocumentsPerTopic(params.topDocPerTopic)
             println("\n------")
