@@ -17,6 +17,8 @@ import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
 import org.apache.spark.storage.StorageLevel._
 import java.time.LocalDateTime
+import java.time.Instant
+import java.time.Duration
 import java.sql.Timestamp
 import org.apache.spark.SparkConf
 
@@ -39,23 +41,32 @@ object LDAExample {
   , val minTermLenght : Int = 3  // A term should have at least minTermLenght characters to be considered as token
   , val qtyOfTopTerms : Int = 20 // how many top terms should be printed on output
   , val termMinDocFreq: Int = 3  // minimum number of different documents a term must appear in to be included in the vocabulary
-  , var qtyLDATopics  : Int = 15 // number of LDA latent topics
-  , val minQtyLDATop  : Int = 5
-  , val alpha         : Int = -1 // LDA dirichlet prior probability placed on document-topic distribution. Choose a low alpha if your documents are made up of a few dominant topics 
-  , val beta          : Int = -1 // LDA dirichlet prior probability placed on topic-word distribution. Choose a low beta if your topics are made up of a few dominant words
-  , val maxIterations : Int = 20 // number of LDA training iterations
+  , var qtyLDATopics  : Int = 40 // number of LDA latent topics
+  , val minQtyLDATop  : Int = 20
+  , val optimizer     : String = "online"
+  , val alpha         : Double = 0.01 // LDA dirichlet prior probability placed on document-topic distribution. Choose a low alpha if your documents are made up of a few dominant topics 
+  , val beta          : Double = 0.01 // LDA dirichlet prior probability placed on topic-word distribution. Choose a low beta if your topics are made up of a few dominant words
+  , val maxIterations : Int = 1000 // number of LDA training iterations
   , val termsPerTopic : Int = 20 // how many terms per topic should be printed on output 
   , val topDocPerTopic: Int = 20 // how many top documents per topic should be printed on output
   , val prtTopTerms   : Boolean = true
-  , val prtTopDocsPerT: Boolean = true
+  , val prtTopDocsPerT: Boolean = false 
   , val prtStats      : Boolean = true
   , val describeTopics: Boolean = true
+  )
+  
+  case class Stats(
+    var LDAInitTime : Instant = Instant.now()
+  , var LDAEndTime : Instant  = Instant.now()
+  , var corpusSize : Long = 0
+  , var vocabLenght : Int = 0
   )
   
   def main(args: Array[String]) {
     Logger.getLogger("org").setLevel(Level.ERROR) // Set the log level to only print errors
     
     val params = Params()
+    
     val spark = SparkSession
       .builder
       .appName(params.appName)
@@ -246,6 +257,7 @@ object LDAExample {
     println("\nAnalyzing Questions + Answers")
     lda_runner(corpusQA, spark, params)
 //    println("Q n A = " + corpusQA.count())
+    
   }
   
   def lda_runner(corpus : DataFrame, spark: SparkSession, params: Params) {
@@ -285,17 +297,30 @@ object LDAExample {
       println(s"Top ${params.qtyOfTopTerms} tokens:")
       tokensFrequency.take(params.qtyOfTopTerms).foreach(println)  
     }
-    
+    val stats = Stats()
+    stats.corpusSize = corpus.count()
     // Runs one LDA experiment varying the number of desired Topics 
     Range.inclusive(params.minQtyLDATop, params.qtyLDATopics, 5).foreach { 
       case i => {
         params.qtyLDATopics = i
-        lda(filtered_df, corpus, spark, params)
+        stats.LDAInitTime = Instant.now()
+        lda(filtered_df, corpus, spark, params, stats)
+        stats.LDAEndTime = Instant.now()
+        // Printing Stats
+        if (params.prtStats) {
+          println("Corpus size = " + stats.corpusSize)
+          println("Vocabulary size = " + stats.vocabLenght)
+          println("LDA Topics = " + params.qtyLDATopics)
+          println("LDA Alpha = " + params.alpha)
+          println("LDA Beta = " + params.beta)
+          println("Iteractions = " + params.maxIterations)
+          println("Duration = " + Duration.between(stats.LDAInitTime, stats.LDAEndTime).getSeconds + "s")
+        }
       }
     }
   }
   
-  def lda(filtered_df: DataFrame, corpus : DataFrame, spark: SparkSession, params: Params) {
+  def lda(filtered_df: DataFrame, corpus : DataFrame, spark: SparkSession, params: Params, stats: Stats) {
     // Computing tokens frequencies for LDA
     var vectorizer = new CountVectorizer()
       .setInputCol("filtered")
@@ -303,6 +328,7 @@ object LDAExample {
       .setMinDF(params.termMinDocFreq)
       .fit(filtered_df)
     val new_countVectors = vectorizer.transform(filtered_df).select("id", "features")
+    stats.vocabLenght = vectorizer.vocabulary.length
     val countVectorsMLib = MLUtils.convertVectorColumnsFromML(new_countVectors, "features")
     import spark.implicits._
     val lda_countVector = countVectorsMLib.map { case Row(id: Int, countVector: Vector) => (id.toLong, countVector) }
@@ -310,26 +336,14 @@ object LDAExample {
     // LDA
     val lda = new LDA()
       //.setOptimizer(new OnlineLDAOptimizer().setMiniBatchFraction(0.8))
-      .setOptimizer("em")
+      .setOptimizer(params.optimizer)
       .setK(params.qtyLDATopics)
       .setMaxIterations(params.maxIterations)
       .setDocConcentration(params.alpha) 
       .setTopicConcentration(params.beta) 
     val lda_countVectorRDD = lda_countVector.rdd
     val ldaModel = lda.run(lda_countVectorRDD)
-    val distLDAModel = ldaModel.asInstanceOf[DistributedLDAModel]
-    
-    // Printing Stats
-    if (params.prtStats) {
-//      println("Corpus size = " + corpus.count())
-//      println("Vocabulary size = " + vectorizer.vocabulary.length)
-      println("Topics = " + lda.getK)
-//      println("LDA Alpha = " + lda.getAlpha)
-//      println("LDA Beta = " + lda.getBeta)
-//      println("Iteractions = " + params.maxIterations)
-      println("Perplexity = " + distLDAModel.toLocal.logPerplexity(lda_countVectorRDD))  
-    }
-    
+        
     // DecribeTopics
     if (params.describeTopics) {
       var topicsArray = ldaModel.describeTopics(maxTermsPerTopic = params.termsPerTopic)
@@ -342,20 +356,21 @@ object LDAExample {
       topics.zipWithIndex.foreach {
         case (topic, i) =>
           println(s"TOPIC ${i+1}")
-          println("------")
+          println("---------")
           topic.foreach { 
             case (term, weight) => {
               print(s"$term (")
-              print(f"$weight%2.3f) ") 
+              println(f"$weight%2.3f) ") 
             }
           }
-          if (params.prtTopDocsPerT) {
+          if (params.prtTopDocsPerT && params.optimizer.equals("em")) {
+            val distLDAModel = ldaModel.asInstanceOf[DistributedLDAModel]
             var topDocs = distLDAModel.topDocumentsPerTopic(params.topDocPerTopic)
             println("\n------")
             val temp = (topDocs(i)._1).zip(topDocs(i)._2)
             temp.foreach {
               case (id, weight) => {
-                print(f"$weight%2.3f : $id : ")
+                print(f"$weight%2.4f : $id : ")
                 println(corpus.where($"id" === id).select("title").first().getAs[String]("title"))
               }
             }
