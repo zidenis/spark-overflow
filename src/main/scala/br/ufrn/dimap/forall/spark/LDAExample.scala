@@ -71,7 +71,8 @@ object LDAExample {
       .appName(params.appName)
       .master(params.master)
       .getOrCreate()
-      
+    spark.sparkContext.setCheckpointDir("hdfs://master:54310/user/hduser/stackoverflow/checkpoint")
+    
 //    processing(spark, params)
     reading(spark, params)
     spark.stop()
@@ -339,7 +340,8 @@ object LDAExample {
       .setK(params.qtyLDATopics)
       .setMaxIterations(params.maxIterations)
       .setDocConcentration(params.alpha) 
-      .setTopicConcentration(params.beta) 
+      .setTopicConcentration(params.beta)
+      .setCheckpointInterval(50)
     val lda_countVectorRDD = lda_countVector.rdd
     val ldaModel = lda.run(lda_countVectorRDD)
     // DecribeTopics
