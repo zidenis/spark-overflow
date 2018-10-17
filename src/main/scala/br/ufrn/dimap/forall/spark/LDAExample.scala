@@ -54,7 +54,7 @@ object LDAExample {
   , val maxIterations : Int = 1000 // number of LDA training iterations
   , val termsPerTopic : Int = 20 // how many terms per topic should be printed on output 
   , val topDocPerTopic: Int = 5 // how many top documents per topic should be printed on output
-  , val prtTopTerms   : Boolean = false
+  , val prtTopTerms   : Boolean = true
   , val prtStats      : Boolean = true
   , val describeTopics: Boolean = true
   )
@@ -93,7 +93,7 @@ object LDAExample {
       .getOrCreate()
     spark.sparkContext.setCheckpointDir(params.checkpointDir)
     
-    processing(spark, params)
+//    processing(spark, params)
     reading(spark, params)
     spark.stop()
   }
@@ -326,66 +326,62 @@ object LDAExample {
   }
   
   def reading(spark: SparkSession, params: Params) {
-    val corpusQ = spark.read.parquet(params.resCorpusQ)
-    println("\nAnalyzing Questions")
-    lda_runner(corpusQ, spark, params)
-//    println("Questions = " + corpusQ.count())
-    val corpusA = spark.read.parquet(params.resCorpusA)
-    println("\nAnalyzing Answers")
-    lda_runner(corpusA, spark, params)
-//    println("Answers = " + corpusA.count())
-    val corpusQA = spark.read.parquet(params.resCorpusQA)
-    println("\nAnalyzing Questions + Answers")
-    lda_runner(corpusQA, spark, params)
-//    println("Q n A = " + corpusQA.count())
+    val corpusQT = spark.read.parquet(params.resCorpusQT + ".parquet")
+//    corpusQT.printSchema()
+//    corpusQT.show()
+    var stats = Stats()
+    stats.corpusSize = corpusQT.count()
+    lda_runner(corpusQT, spark, params, stats)
+    
+//    val corpusQ = spark.read.parquet(params.resCorpusQ)
+//    println("\nAnalyzing Questions")
+//    lda_runner(corpusQ, spark, params)
+////    println("Questions = " + corpusQ.count())
+//    val corpusA = spark.read.parquet(params.resCorpusA)
+//    println("\nAnalyzing Answers")
+//    lda_runner(corpusA, spark, params)
+////    println("Answers = " + corpusA.count())
+//    val corpusQA = spark.read.parquet(params.resCorpusQA)
+//    println("\nAnalyzing Questions + Answers")
+//    lda_runner(corpusQA, spark, params)
+////    println("Q n A = " + corpusQA.count())
     
   }
   
-  def lda_runner(corpus : DataFrame, spark: SparkSession, params: Params) {
-    // Tokenization
-    val tokenizer = new RegexTokenizer()
-      .setPattern("[\\W_]+")
-      .setMinTokenLength(params.minTermLenght) // Filter away tokens with length < minTokenLenght
-      .setInputCol("document")
-      .setOutputCol("tokens")
-    val tokenized_df = tokenizer.transform(corpus)
-//    tokenized_df.select("tokens").show(false)
+  def lda_runner(corpus : DataFrame, spark: SparkSession, params: Params, stats: Stats) {
     
-    // Removing stopwords
-    val stopwords = spark.sparkContext.textFile(params.resStopwords).collect()
-    var remover = new StopWordsRemover()
+    // Removing additional stopwords
+    val stopwords = Array("apache", "spark")
+    val remover = new StopWordsRemover()
       .setStopWords(stopwords)
-      .setInputCol("tokens")
-      .setOutputCol("filtered")
-    val filtered_df = remover.transform(tokenized_df)
-    filtered_df.persist(MEMORY_ONLY)
-//    filtered_df.select("filtered").show(false)
-    
-    // Top Terms
+      .setInputCol("document")
+      .setOutputCol("removed")
+    val removed = remover.transform(corpus)
+        
+    // Top Terms in whole corpus
     if (params.prtTopTerms) {
-      // Computing tokens frequencies
-      val filtered_df_combined = filtered_df
-        .select(org.apache.spark.sql.functions.explode(col("filtered")).alias("filtered_aux"))
-        .select(org.apache.spark.sql.functions.collect_list("filtered_aux").alias("filtered")) 
-      var countVectorizer = new CountVectorizer()
-        .setInputCol("filtered")
+      removed.persist(MEMORY_ONLY)
+      val combined = removed
+        .select(org.apache.spark.sql.functions.explode(col("removed")).alias("exploded"))
+        .select(org.apache.spark.sql.functions.collect_list("exploded").alias("combined"))
+      val countVectorizer = new CountVectorizer()
+        .setInputCol("combined")
         .setOutputCol("features")
-        .fit(filtered_df_combined)
-      val countVectors = countVectorizer.transform(filtered_df_combined).select("features")
+        .fit(combined)
+      val countVectors = countVectorizer.transform(combined).select("features")
       val frequency = countVectors.rdd.map(_.getAs[SparseVector]("features")).collect()(0)
-
       val tokensFrequency = countVectorizer.vocabulary.zip(frequency.toArray)
-      println(s"Top ${params.qtyOfTopTerms} tokens:")
-      tokensFrequency.take(params.qtyOfTopTerms).foreach(println)  
+      print(s"\nTop ${params.qtyOfTopTerms} tokens: ")
+      tokensFrequency.take(params.qtyOfTopTerms).foreach(tuple => print(f"${tuple._1} (${tuple._2}%.0f) "))
+      println("")
     }
-    val stats = Stats()
-    stats.corpusSize = corpus.count()
+    
     // Runs one LDA experiment varying the number of desired Topics 
     Range.inclusive(params.minQtyLDATop, params.qtyLDATopics, 5).foreach { 
       case i => {
         params.qtyLDATopics = i
         stats.LDAInitTime = Instant.now()
-        lda(filtered_df, corpus, spark, params, stats)
+        lda(removed, spark, params, stats)
         stats.LDAEndTime = Instant.now()
         // Printing Stats
         if (params.prtStats) {
@@ -401,14 +397,14 @@ object LDAExample {
     }
   }
   
-  def lda(filtered_df: DataFrame, corpus : DataFrame, spark: SparkSession, params: Params, stats: Stats) {
+  def lda(removed: DataFrame, spark: SparkSession, params: Params, stats: Stats) {
     // Computing tokens frequencies for LDA
     var vectorizer = new CountVectorizer()
-      .setInputCol("filtered")
+      .setInputCol("removed")
       .setOutputCol("features")
       .setMinDF(params.termMinDocFreq)
-      .fit(filtered_df)
-    val new_countVectors = vectorizer.transform(filtered_df).select("id", "features")
+      .fit(removed)
+    val new_countVectors = vectorizer.transform(removed).select("id", "features")
     stats.vocabLenght = vectorizer.vocabulary.length
     val countVectorsMLib = MLUtils.convertVectorColumnsFromML(new_countVectors, "features")
     import spark.implicits._
@@ -452,7 +448,7 @@ object LDAExample {
             temp.foreach {
               case (id, weight) => {
                 print(f"$weight%2.4f : $id : ")
-                println(corpus.where($"id" === id).select("title").first().getAs[String]("title"))
+                println(removed.where($"id" === id).select("title").first().getAs[String]("title"))
               }
             }
           }
