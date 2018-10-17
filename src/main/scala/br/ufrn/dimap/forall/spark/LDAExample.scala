@@ -21,6 +21,7 @@ import java.time.Instant
 import java.time.Duration
 import java.sql.Timestamp
 import org.apache.spark.SparkConf
+import org.apache.spark.mllib.feature.Stemmer
 
 object LDAExample {
   
@@ -200,20 +201,56 @@ object LDAExample {
       .where("sparkRelated") // somente com tags de spark
     sparkQuestions.persist(MEMORY_ONLY)
     
+    // Corpus QT
+    // Clean document's string
+    val cleanedQT = sparkQuestions
+      .withColumn("cleaned", expr("cleanDocument(title)"))
+      
+    // Tokenization
+    val tokenizer = new RegexTokenizer()
+      .setPattern("[\\W_]+")
+      .setMinTokenLength(params.minTermLenght) // Filter away tokens with length < minTokenLenght
+      .setInputCol("cleaned")
+      .setOutputCol("tokenized")
+    val tokenizedQT = tokenizer.transform(cleanedQT)
+    
+    // Removing stopwords
+    val stopwords = spark.sparkContext.textFile(params.resStopwords).collect()
+    val remover = new StopWordsRemover()
+      .setStopWords(stopwords)
+      .setInputCol("tokenized")
+      .setOutputCol("removed")
+    val removedQT = remover.transform(tokenizedQT)
+    
+    // Stemming
+    val stemmer = new Stemmer()
+      .setInputCol("removed")
+      .setOutputCol("document")
+      .setLanguage("English")
+    val stemmedQT = stemmer.transform(removedQT)
+    
     // Corpus de Perguntas em que cada documento eh apenas o titulo da pergunta
-    val corpusQT = sparkQuestions
-      .withColumn("document", expr("cleanDocument(title)"))
+    val corpusQT = stemmedQT
       .select("id", "creationDate", "score", "viewCount", "title", "document", "tags", "answerCount", "favoriteCount")
+    
 //    corpusQT.show()
     corpusQT.write.mode(SaveMode.Overwrite).parquet(params.resCorpusQT)
        
-    // Corpus de Perguntas em que cada documento eh o titulo cocatenado com o corpo da pergunta
-    val corpusQ = sparkQuestions
+    // Corpus Q
+    val cleanedQ = sparkQuestions
       .withColumn("title_body", concat($"title", lit(" "), $"body"))
-      .withColumn("document", expr("cleanDocument(title_body)"))
+      .withColumn("cleaned", expr("cleanDocument(title_body)"))  
+    cleanedQ.persist(MEMORY_ONLY)
+    cleanedQ.createOrReplaceTempView("corpusQ")
+    
+    val tokenizedQ = tokenizer.transform(cleanedQ)
+    val removedQ = remover.transform(tokenizedQ)
+    val stemmedQ = stemmer.transform(removedQ)
+    
+    // Corpus de Perguntas em que cada documento eh o titulo cocatenado com o corpo da pergunta
+    val corpusQ = stemmedQ
       .select("id", "creationDate", "score", "viewCount", "title", "document", "tags", "answerCount", "favoriteCount")
-    corpusQ.persist(MEMORY_ONLY)
-    corpusQ.createOrReplaceTempView("corpusQ")
+    
 //    corpusQ.show()
     corpusQ.write.mode(SaveMode.Overwrite).parquet(params.resCorpusQ)
 
@@ -222,12 +259,13 @@ object LDAExample {
       .where("postTypeId = 2") // somente respostas
     stackAnswers.createOrReplaceTempView("stackAnswers")
     
+    // Corpus A
     // Corpus de Respostas em que cada documento eh a concatenacao dos corpos das respostas dada a cada pergunta
-    val corpusA = sql("""
-      SELECT answers.id, corpusQ.title, answers.document 
+    val cleanedA = sql("""
+      SELECT answers.id, corpusQ.title, answers.cleaned 
         FROM (
       SELECT a.parentId as id
-           , cleanDocument(concat_ws(' ', collect_list(a.body))) as document
+           , cleanDocument(concat_ws(' ', collect_list(a.body))) as cleaned
         FROM stackAnswers a 
    LEFT SEMI JOIN corpusQ q 
           ON a.parentId = q.id 
@@ -236,25 +274,44 @@ object LDAExample {
    LEFT JOIN corpusQ
           ON answers.id = corpusQ.id       
     """)
-    corpusA.persist(MEMORY_ONLY)
-    corpusA.createOrReplaceTempView("corpusA")
+    cleanedA.persist(MEMORY_ONLY)
+    cleanedA.createOrReplaceTempView("corpusA")
+    
+    val tokenizedA = tokenizer.transform(cleanedA)
+    val removedA = remover.transform(tokenizedA)
+    val stemmedA = stemmer.transform(removedA)
+    
+    val corpusA = stemmedA
+      .select("id", "title", "document")
+    
 //    corpusA.show()
     corpusA.write.mode(SaveMode.Overwrite)parquet(params.resCorpusA)
     
+    // Corpus QA
     // Obter Posts com perguntas sobre Spark e suas respectivas respostas
     val sparkQA = sql("""
-      SELECT q.id, q.title, q.document qd, a.document ad, q.creationDate, q.score, q.viewCount, q.tags, q.answerCount, q.favoriteCount
+      SELECT q.id, q.title, q.cleaned qd, a.cleaned ad, q.creationDate, q.score, q.viewCount, q.tags, q.answerCount, q.favoriteCount
         FROM corpusQ q 
    LEFT JOIN corpusA a 
           ON q.id = a.id
     """)
     
-    val corpusQA = sparkQA
+    val cleanedQA = sparkQA
       .withColumn("ad_not_null", coalesce($"ad",lit(""))) // para o caso de perguntas sem respostas
-      .withColumn("document", concat($"qd", lit(" "), $"ad_not_null"))
+      .withColumn("cleaned", concat($"qd", lit(" "), $"ad_not_null"))
+      
+    val tokenizedQA = tokenizer.transform(cleanedQA)
+    val removedQA = remover.transform(tokenizedQA)
+    val stemmedQA = stemmer.transform(removedQA)  
+    
+    val corpusQA = stemmedQA
       .select("id", "creationDate", "score", "viewCount", "title", "document", "tags", "answerCount", "favoriteCount")
+
 //    corpusQA.show()
     corpusQA.write.mode(SaveMode.Overwrite).parquet(params.resCorpusQA)
+    
+      
+//    select("id","document").write.csv("./resources/corpusQA.csv")
   }
   
   def reading(spark: SparkSession, params: Params) {
