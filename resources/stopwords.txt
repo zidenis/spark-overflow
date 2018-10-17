@@ -1,9 +1,3 @@
-spark
-tag
-http
-https
-com
-org
 about
 above
 across
@@ -64,6 +58,7 @@ couldnt
 cry
 describe
 detail
+does
 done
 down
 due
@@ -83,7 +78,6 @@ every
 everyone
 everything
 everywhere
-except
 few
 fifteen
 fify
@@ -120,6 +114,7 @@ herself
 him
 himself
 his
+how
 however
 hundred
 inc
@@ -254,10 +249,13 @@ until
 upon
 very
 via
+want
 was
 well
 were
+what
 whatever
+when
 whence
 whenever
 whereafter
@@ -267,6 +265,7 @@ wherein
 whereupon
 wherever
 whether
+which
 while
 whither
 whoever
