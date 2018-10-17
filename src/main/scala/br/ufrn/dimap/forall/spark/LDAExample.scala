@@ -175,7 +175,7 @@ object LDAExample {
       .replaceAll("<pre>.+</pre>", " ") // remove code parts
       .replaceAll("<([^>])+>", " ") // remove tags
       .replaceAll("\\d+((\\.\\d+)?)*", " ") // remove numbers like 2018, 1.2.1 
-      .replaceAll("[/<>?:;=()_.,'\"\\[\\]\\-]", " ") // remove special characters
+      .replaceAll("[!@#$%^&*()_=+.,<>:;?/{}`~'\"\\[\\]\\-]", " ") // remove special characters
   }
 
   def processing(spark: SparkSession, params: Params) {
@@ -191,71 +191,70 @@ object LDAExample {
     // Obter posts para somente aqueles em que eh possivel ter pergunta sobre Apache Spark
     val posts = lines
       .toDS()
-//      .where("year(creationDate) > 2012") // Primeira pergunta sobre spark eh de 2013
-      .withColumn("sparkRelated", expr("sparkRelated(tags)")) // posts com tag de spark
-      .where("sparkRelated") // somente com tags de spark
-    
+      .where("year(creationDate) > 2012") // Primeira pergunta sobre spark eh de 2013
+      
     // Obter Posts com perguntas sobre Spark
     val sparkQuestions = posts
       .where("postTypeId = 1")  // somente perguntas
+      .withColumn("sparkRelated", expr("sparkRelated(tags)")) // posts com tag de spark
+      .where("sparkRelated") // somente com tags de spark
     sparkQuestions.persist(MEMORY_ONLY)
     
-    // Corpus de Perguntas cujo documento serah apenas o titulo da pergunta
+    // Corpus de Perguntas em que cada documento eh apenas o titulo da pergunta
     val corpusQT = sparkQuestions
       .withColumn("document", expr("cleanDocument(title)"))
       .select("id", "creationDate", "score", "viewCount", "title", "document", "tags", "answerCount", "favoriteCount")
 //    corpusQT.show()
     corpusQT.write.mode(SaveMode.Overwrite).parquet(params.resCorpusQT)
-        
-//    val corpusQ = sparkQuestions
-//      .withColumn("title_body", concat($"title", lit(" "), $"body"))
-//      .withColumn("document", expr("cleanDocument(title_body)"))
-//      .select("id","title","document")
-//    corpusQ.persist(MEMORY_ONLY)
-//    corpusQ.createOrReplaceTempView("corpusQ")
-////    println("Questions = " + corpusQ.count())
-////    corpusQ.show(20, false)
-//    corpusQ.write.mode(SaveMode.Overwrite).parquet(params.resCorpusQ)
-//
-//    // Obter Posts com respostas a perguntas sobre Spark
-//    val stackAnswers = posts
-//      .where("postTypeId = 2") // somente respostas
-//    stackAnswers.createOrReplaceTempView("stackAnswers")
-////    val sparkAnswers = stackAnswers
-////      .join(sparkQuestions, stackAnswers("parentId") === sparkQuestions("id"), "leftsemi")
-//    val corpusA = sql("""
-//      SELECT answers.id, corpusQ.title, answers.document 
-//        FROM (
-//      SELECT a.parentId as id
-//           , cleanDocument(concat_ws(' ', collect_list(a.body))) as document 
-//        FROM stackAnswers a 
-//   LEFT SEMI JOIN corpusQ q 
-//          ON a.parentId = q.id 
-//    GROUP BY a.parentId
-//        ) as answers
-//   LEFT JOIN corpusQ
-//          ON answers.id = corpusQ.id
-//    """)
-//    corpusA.persist(MEMORY_ONLY)
-//    corpusA.createOrReplaceTempView("corpusA")
-////    println("Answers = " + corpusA.count())
-////    corpusA.show(10, false)
-//    corpusA.write.mode(SaveMode.Overwrite)parquet(params.resCorpusA)
-//    
-//    // Obter Posts com perguntas sobre Spark e suas respectivas perguntas
-//    val sparkQA = sql("""
-//      SELECT q.id, q.title, q.document qd, a.document ad 
-//        FROM corpusQ q 
-//   LEFT JOIN corpusA a 
-//          ON q.id = a.id
-//    """)
-//    val corpusQA = sparkQA
-//      .withColumn("ad_not_null", coalesce($"ad",lit("")))
-//      .withColumn("document", concat($"qd", lit(" "), $"ad_not_null"))
-//      .select("id","title","document")
-////    println("QA = " + corpusQA.count())
-////    corpusQA.show(10, false)
-//    corpusQA.write.mode(SaveMode.Overwrite).parquet(params.resCorpusQA)
+       
+    // Corpus de Perguntas em que cada documento eh o titulo cocatenado com o corpo da pergunta
+    val corpusQ = sparkQuestions
+      .withColumn("title_body", concat($"title", lit(" "), $"body"))
+      .withColumn("document", expr("cleanDocument(title_body)"))
+      .select("id", "creationDate", "score", "viewCount", "title", "document", "tags", "answerCount", "favoriteCount")
+    corpusQ.persist(MEMORY_ONLY)
+    corpusQ.createOrReplaceTempView("corpusQ")
+//    corpusQ.show()
+    corpusQ.write.mode(SaveMode.Overwrite).parquet(params.resCorpusQ)
+
+    // Obter Posts com respostas a perguntas sobre Spark
+    val stackAnswers = posts
+      .where("postTypeId = 2") // somente respostas
+    stackAnswers.createOrReplaceTempView("stackAnswers")
+    
+    // Corpus de Respostas em que cada documento eh a concatenacao dos corpos das respostas dada a cada pergunta
+    val corpusA = sql("""
+      SELECT answers.id, corpusQ.title, answers.document 
+        FROM (
+      SELECT a.parentId as id
+           , cleanDocument(concat_ws(' ', collect_list(a.body))) as document
+        FROM stackAnswers a 
+   LEFT SEMI JOIN corpusQ q 
+          ON a.parentId = q.id 
+    GROUP BY a.parentId
+        ) as answers
+   LEFT JOIN corpusQ
+          ON answers.id = corpusQ.id       
+    """)
+    corpusA.persist(MEMORY_ONLY)
+    corpusA.createOrReplaceTempView("corpusA")
+//    corpusA.show()
+    corpusA.write.mode(SaveMode.Overwrite)parquet(params.resCorpusA)
+    
+    // Obter Posts com perguntas sobre Spark e suas respectivas respostas
+    val sparkQA = sql("""
+      SELECT q.id, q.title, q.document qd, a.document ad, q.creationDate, q.score, q.viewCount, q.tags, q.answerCount, q.favoriteCount
+        FROM corpusQ q 
+   LEFT JOIN corpusA a 
+          ON q.id = a.id
+    """)
+    
+    val corpusQA = sparkQA
+      .withColumn("ad_not_null", coalesce($"ad",lit(""))) // para o caso de perguntas sem respostas
+      .withColumn("document", concat($"qd", lit(" "), $"ad_not_null"))
+      .select("id", "creationDate", "score", "viewCount", "title", "document", "tags", "answerCount", "favoriteCount")
+//    corpusQA.show()
+    corpusQA.write.mode(SaveMode.Overwrite).parquet(params.resCorpusQA)
   }
   
   def reading(spark: SparkSession, params: Params) {
