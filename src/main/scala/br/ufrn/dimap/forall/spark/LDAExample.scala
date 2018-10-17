@@ -27,20 +27,20 @@ object LDAExample {
   
   case class Params(
     val appName       : String = "LDA"
-  , val master        : String = "local[*]"  
+  , val master        : String = "local[*]"
   , val resSOPosts    : String = "./resources/Posts-Spark-100.xml" // Stack Overflow's Posts Dataset
-  , val resCorpusQ    : String = "./resources/CorpusQ.parquet"     // Corpus of Questions (documents are question's title and body) 
-  , val resCorpusQT   : String = "./resources/CorpusQT.parquet"    // Corpus of Questions (documents are only question's title)
-  , val resCorpusA    : String = "./resources/CorpusA.parquet"     // Corpus of Answers (documents are answers' body)
-  , val resCorpusQA   : String = "./resources/CorpusQA.parquet"    // Corpus of Questions and answers (documents are question's title and body concatenated with all the bodies of the answers to the question) 
+  , val resCorpusQ    : String = "./resources/CorpusQ"             // Corpus of Questions (documents are question's title and body) 
+  , val resCorpusQT   : String = "./resources/CorpusQT"            // Corpus of Questions (documents are only question's title)
+  , val resCorpusA    : String = "./resources/CorpusA"             // Corpus of Answers (documents are answers' body)
+  , val resCorpusQA   : String = "./resources/CorpusQA"            // Corpus of Questions and answers (documents are question's title and body concatenated with all the bodies of the answers to the question) 
   , val resStopwords  : String = "./resources/stopwords.txt"       // Set of words to be ignored as tokens
   , val checkpointDir : String = "./resources/checkpoint"
 //  , val master        : String = "spark://10.7.40.42:7077"
 //  , val resSOPosts    : String = "hdfs://master:54310/user/hduser/stackoverflow/Posts.xml"
-//  , val resCorpusQ    : String = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQ.parquet"
-//  , val resCorpusQT   : String = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQT.parquet"
-//  , val resCorpusA    : String = "hdfs://master:54310/user/hduser/stackoverflow/CorpusA.parquet"
-//  , val resCorpusQA   : String = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQA.parquet"
+//  , val resCorpusQ    : String = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQ"
+//  , val resCorpusQT   : String = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQT"
+//  , val resCorpusA    : String = "hdfs://master:54310/user/hduser/stackoverflow/CorpusA"
+//  , val resCorpusQA   : String = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQA"
 //  , val resStopwords  : String = "hdfs://master:54310/user/hduser/stackoverflow/stopwords.txt"
 //  , val checkpointDir : String = "hdfs://master:54310/user/hduser/stackoverflow/checkpoint"
   , val minTermLenght : Int = 3  // A term should have at least minTermLenght characters to be considered as token
@@ -234,7 +234,11 @@ object LDAExample {
       .select("id", "creationDate", "score", "viewCount", "title", "document", "tags", "answerCount", "favoriteCount")
     
 //    corpusQT.show()
-    corpusQT.write.mode(SaveMode.Overwrite).parquet(params.resCorpusQT)
+    corpusQT.write.mode(SaveMode.Overwrite).parquet(params.resCorpusQT + ".parquet")
+    corpusQT
+      .withColumn("doc", expr("concat_ws(' ', document)"))
+      .selectExpr("id", "doc")
+      .write.mode(SaveMode.Overwrite).csv(params.resCorpusQT + ".csv")
        
     // Corpus Q
     val cleanedQ = sparkQuestions
@@ -252,13 +256,17 @@ object LDAExample {
       .select("id", "creationDate", "score", "viewCount", "title", "document", "tags", "answerCount", "favoriteCount")
     
 //    corpusQ.show()
-    corpusQ.write.mode(SaveMode.Overwrite).parquet(params.resCorpusQ)
-
+    corpusQ.write.mode(SaveMode.Overwrite).parquet(params.resCorpusQ + ".parquet")
+    corpusQ
+      .withColumn("doc", expr("concat_ws(' ', document)"))
+      .selectExpr("id", "doc")
+      .write.mode(SaveMode.Overwrite).csv(params.resCorpusQ + ".csv")
+    
     // Obter Posts com respostas a perguntas sobre Spark
     val stackAnswers = posts
       .where("postTypeId = 2") // somente respostas
     stackAnswers.createOrReplaceTempView("stackAnswers")
-    
+      
     // Corpus A
     // Corpus de Respostas em que cada documento eh a concatenacao dos corpos das respostas dada a cada pergunta
     val cleanedA = sql("""
@@ -285,7 +293,11 @@ object LDAExample {
       .select("id", "title", "document")
     
 //    corpusA.show()
-    corpusA.write.mode(SaveMode.Overwrite)parquet(params.resCorpusA)
+    corpusA.write.mode(SaveMode.Overwrite)parquet(params.resCorpusA + ".parquet")
+    corpusA
+      .withColumn("doc", expr("concat_ws(' ', document)"))
+      .selectExpr("id", "doc")
+      .write.mode(SaveMode.Overwrite).csv(params.resCorpusA + ".csv")
     
     // Corpus QA
     // Obter Posts com perguntas sobre Spark e suas respectivas respostas
@@ -308,10 +320,11 @@ object LDAExample {
       .select("id", "creationDate", "score", "viewCount", "title", "document", "tags", "answerCount", "favoriteCount")
 
 //    corpusQA.show()
-    corpusQA.write.mode(SaveMode.Overwrite).parquet(params.resCorpusQA)
-    
-      
-//    select("id","document").write.csv("./resources/corpusQA.csv")
+    corpusQA.write.mode(SaveMode.Overwrite).parquet(params.resCorpusQA + ".parquet")
+    corpusQA
+      .withColumn("doc", expr("concat_ws(' ', document)"))
+      .selectExpr("id", "doc")
+      .write.mode(SaveMode.Overwrite).csv(params.resCorpusQA + ".csv")
   }
   
   def reading(spark: SparkSession, params: Params) {
