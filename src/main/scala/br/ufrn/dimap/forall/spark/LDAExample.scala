@@ -66,23 +66,6 @@ object LDAExample {
   , var vocabLenght : Int = 0
   )
   
-  def main(args: Array[String]) {
-    Logger.getLogger("org").setLevel(Level.ERROR) // Set the log level to only print errors
-    
-    val params = Params()
-    
-    val spark = SparkSession
-      .builder
-      .appName(params.appName)
-      .master(params.master)
-      .getOrCreate()
-    spark.sparkContext.setCheckpointDir(params.checkpointDir)
-    
-    processing(spark, params)
-//    reading(spark, params)
-    spark.stop()
-  }
-    
   case class Post(
     id:               Int,
     postTypeId:       Int,
@@ -98,8 +81,23 @@ object LDAExample {
     favoriteCount:    Option[Int]
   )
   
-  case class Document( id: Int, document: String)
-
+  def main(args: Array[String]) {
+    Logger.getLogger("org").setLevel(Level.ERROR) // Set the log level to only print errors
+    
+    val params = Params()
+    
+    val spark = SparkSession
+      .builder
+      .appName(params.appName)
+      .master(params.master)
+      .getOrCreate()
+    spark.sparkContext.setCheckpointDir(params.checkpointDir)
+    
+    processing(spark, params)
+    reading(spark, params)
+    spark.stop()
+  }
+    
   def parseXml(line: String) = {
     try {
       val xml = scala.xml.XML.loadString(line)
