@@ -9,7 +9,6 @@ import org.apache.spark.ml.feature.StopWordsRemover
 import org.apache.spark.ml.feature.VectorAssembler
 import org.apache.spark.ml.linalg.SparseVector
 import org.apache.spark.mllib.clustering.LDA
-import org.apache.spark.mllib.clustering.OnlineLDAOptimizer
 import org.apache.spark.mllib.clustering.DistributedLDAModel
 import org.apache.spark.mllib.linalg.Vector
 import org.apache.spark.mllib.util.MLUtils
@@ -63,14 +62,16 @@ object LDAExample {
     var LDAInitTime : Instant = Instant.now()
   , var LDAEndTime : Instant  = Instant.now()
   , var corpusSize : Long = 0
-  , var vocabLenght : Int = 0
+  , var vocabLength : Int = 0
+  , var alpha : Double = 0
+  , var beta : Double = 0
   )
   
   case class Post(
-    id:               Int,
+    id:               Long,
     postTypeId:       Int,
-    acceptedAnswerId: Option[Int],
-    parentId:         Option[Int],
+    acceptedAnswerId: Option[Long],
+    parentId:         Option[Long],
     creationDate:     Timestamp,
     score:            Int,
     viewCount:        Option[Int],
@@ -101,14 +102,14 @@ object LDAExample {
   def parseXml(line: String) = {
     try {
       val xml = scala.xml.XML.loadString(line)
-      val id = (xml \@ "Id").toInt
+      val id = (xml \@ "Id").toLong
       val postTypeId = (xml \@ "PostTypeId").toInt
       val creationDate = Timestamp.valueOf(LocalDateTime.parse(xml \@ "CreationDate"))
       val score = (xml \@ "Score").toInt
       val body = (xml \@ "Body")
       var title: Option[String] = None
-      var acceptedAnswerId: Option[Int] = None
-      var parentId: Option[Int] = None
+      var acceptedAnswerId: Option[Long] = None
+      var parentId: Option[Long] = None
       var tags: Option[String] = None
       var viewCount: Option[Int] = None
       var answerCount: Option[Int] = None
@@ -386,10 +387,10 @@ object LDAExample {
         // Printing Stats
         if (params.prtStats) {
           println("Corpus size = " + stats.corpusSize)
-          println("Vocabulary size = " + stats.vocabLenght)
+          println("Vocabulary size = " + stats.vocabLength)
           println("LDA Topics = " + params.qtyLDATopics)
-          println("LDA Alpha = " + params.alpha)
-          println("LDA Beta = " + params.beta)
+          println("LDA Alpha = " + stats.alpha)
+          println("LDA Beta = " + stats.beta)
           println("Iteractions = " + params.maxIterations)
           println("Duration = " + Duration.between(stats.LDAInitTime, stats.LDAEndTime).getSeconds + "s")
         }
@@ -397,38 +398,53 @@ object LDAExample {
     }
   }
   
-  def lda(removed: DataFrame, spark: SparkSession, params: Params, stats: Stats) {
+  def lda(corpus: DataFrame, spark: SparkSession, params: Params, stats: Stats) {
     // Computing tokens frequencies for LDA
-    var vectorizer = new CountVectorizer()
+    val vectorizer = new CountVectorizer()
       .setInputCol("removed")
       .setOutputCol("features")
       .setMinDF(params.termMinDocFreq)
-      .fit(removed)
-    val new_countVectors = vectorizer.transform(removed).select("id", "features")
-    stats.vocabLenght = vectorizer.vocabulary.length
-    val countVectorsMLib = MLUtils.convertVectorColumnsFromML(new_countVectors, "features")
-    import spark.implicits._
-    val lda_countVector = countVectorsMLib.map { case Row(id: Int, countVector: Vector) => (id.toLong, countVector) }
+      .setMinTF(1.0)
+      .fit(corpus)
+    val vectorized = vectorizer.transform(corpus).select("id", "features")
+    stats.vocabLength = vectorizer.vocabulary.length
     
-    // LDA
+    // To use the LDA from MLlib library
+    val vectorizedMLib = MLUtils.convertVectorColumnsFromML(vectorized, "features")
+    import spark.implicits._
+    val vectorizedDS = vectorizedMLib.map { case Row(id: Long, countVector: Vector) => (id, countVector) }
+    val vectorizedRDD = vectorizedDS.rdd
+    
+    // Setting default LDA Parameters
+    var docConcentration = params.alpha
+    var topicConcentration = params.beta
+    if (params.optimizer.equals("em")) {
+      if (params.alpha == -1) docConcentration = (50/params.qtyLDATopics)+1
+      if (params.beta == -1) topicConcentration = 1.1
+    } else if (params.optimizer.equals("online")){
+      if (params.alpha == -1) docConcentration = 1/params.qtyLDATopics
+      if (params.beta == -1) topicConcentration = 1/params.qtyLDATopics
+    }
+    
     val lda = new LDA()
-      //.setOptimizer(new OnlineLDAOptimizer().setMiniBatchFraction(0.8))
       .setOptimizer(params.optimizer)
       .setK(params.qtyLDATopics)
       .setMaxIterations(params.maxIterations)
-      .setDocConcentration(params.alpha) 
-      .setTopicConcentration(params.beta)
+      .setDocConcentration(docConcentration) 
+      .setTopicConcentration(topicConcentration)
       .setCheckpointInterval(50)
-    val lda_countVectorRDD = lda_countVector.rdd
-    val ldaModel = lda.run(lda_countVectorRDD)
-    // DecribeTopics
+    val ldaModel = lda.run(vectorizedRDD)    
+    stats.alpha = ldaModel.docConcentration(0)
+    stats.beta = ldaModel.topicConcentration
+
+    // Describing Topics
     if (params.describeTopics) {
-      var topicsArray = ldaModel.describeTopics(maxTermsPerTopic = params.termsPerTopic)
-      var vocabList = vectorizer.vocabulary
-      var topics = topicsArray.map {
+      val topicsArray = ldaModel.describeTopics(maxTermsPerTopic = params.termsPerTopic)
+      val vocabList = vectorizer.vocabulary
+      val topics = topicsArray.map {
         case (term, termWeight) =>
           term.map(vocabList(_)).zip(termWeight)
-        }
+      }
       // Output
       topics.zipWithIndex.foreach {
         case (topic, i) =>
@@ -442,13 +458,13 @@ object LDAExample {
           }
           if (params.topDocPerTopic > 0 && params.optimizer.equals("em")) {
             val distLDAModel = ldaModel.asInstanceOf[DistributedLDAModel]
-            var topDocs = distLDAModel.topDocumentsPerTopic(params.topDocPerTopic)
+            val topDocs = distLDAModel.topDocumentsPerTopic(params.topDocPerTopic)
             println("\n------")
             val temp = (topDocs(i)._1).zip(topDocs(i)._2)
             temp.foreach {
               case (id, weight) => {
                 print(f"$weight%2.4f : $id : ")
-                println(removed.where($"id" === id).select("title").first().getAs[String]("title"))
+                println(corpus.where($"id" === id).select("title").first().getAs[String]("title"))
               }
             }
           }
