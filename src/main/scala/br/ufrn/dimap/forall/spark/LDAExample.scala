@@ -21,6 +21,7 @@ import java.time.Duration
 import java.sql.Timestamp
 import org.apache.spark.SparkConf
 import org.apache.spark.mllib.feature.Stemmer
+import scala.collection.mutable.ListBuffer
 
 object LDAExample {
   
@@ -56,6 +57,7 @@ object LDAExample {
   , val prtTopTerms   : Boolean = true
   , val prtStats      : Boolean = true
   , val describeTopics: Boolean = true
+  , val horizontOutput: Boolean = true
   )
   
   case class Stats(
@@ -439,36 +441,63 @@ object LDAExample {
 
     // Describing Topics
     if (params.describeTopics) {
-      val topicsArray = ldaModel.describeTopics(maxTermsPerTopic = params.termsPerTopic)
       val vocabList = vectorizer.vocabulary
-      val topics = topicsArray.map {
-        case (term, termWeight) =>
-          term.map(vocabList(_)).zip(termWeight)
-      }
-      // Output
-      topics.zipWithIndex.foreach {
-        case (topic, i) =>
-          println(s"TOPIC ${i+1}")
-          println("---------")
-          topic.foreach { 
-            case (term, weight) => {
-              print(s"$term (")
-              println(f"$weight%2.3f) ") 
-            }
+      val describedTopics = ldaModel.describeTopics(maxTermsPerTopic = params.termsPerTopic)
+      val topics = describedTopics.map {
+        case (terms, weights) => {
+          val zipped = terms.map(vocabList(_)).zip(weights)
+          zipped.map {
+            case (term, weight) => f"$term ($weight%2.3f)"
           }
-          if (params.topDocPerTopic > 0 && params.optimizer.equals("em")) {
+        }
+      }
+      
+      // Output with Horizontal layout using dataframes
+      if (params.horizontOutput) {
+        // Transforming the Array of Topics in a Dataframe with one column for each topic
+        val transposed = topics.transpose
+        val transposedDF = spark.sparkContext.parallelize(transposed).toDF()
+        val topicsDF = transposedDF.select((Range(0, params.qtyLDATopics).map(i => $"value"(i) as "TOPIC " + (i+1)):_*))
+        // Getting the top documents per topic
+        if (params.topDocPerTopic > 0 && params.optimizer.equals("em")) {
+          var columns = ListBuffer[ListBuffer[String]]()
+          Range(0, params.qtyLDATopics).map( i => {
+            var lines = ListBuffer[String]()
             val distLDAModel = ldaModel.asInstanceOf[DistributedLDAModel]
             val topDocs = distLDAModel.topDocumentsPerTopic(params.topDocPerTopic)
-            println("\n------")
-            val temp = (topDocs(i)._1).zip(topDocs(i)._2)
-            temp.foreach {
+            (topDocs(i)._1).zip(topDocs(i)._2).foreach {
               case (id, weight) => {
-                print(f"$weight%2.4f : $id : ")
-                println(corpus.where($"id" === id).select("title").first().getAs[String]("title"))
+                lines += s"$id : " + corpus.where($"id" === id).select("title", "tags").first().mkString(" : ") + f" : $weight%2.4f"
               }
             }
-          }
-          println(s"\n==========")
+            columns += lines            
+          })
+          val questions = columns.transpose.toDF()
+          val questionsDF = questions.select((Range(0, params.qtyLDATopics).map(i => $"value"(i) as "TOPIC " + (i+1)):_*))
+          topicsDF.union(questionsDF).show(params.qtyLDATopics+params.qtyOfTopTerms+params.topDocPerTopic , false)
+        }
+      } 
+      else {
+        // Output with Vertical layout
+        topics.zipWithIndex.foreach {
+          case (topic, i) =>
+            println(s"TOPIC ${i+1}")
+            println("---------")
+            topic.foreach(println)
+            if (params.topDocPerTopic > 0 && params.optimizer.equals("em")) {
+              val distLDAModel = ldaModel.asInstanceOf[DistributedLDAModel]
+              val topDocs = distLDAModel.topDocumentsPerTopic(params.topDocPerTopic)
+              println("---------")
+              val temp = (topDocs(i)._1).zip(topDocs(i)._2)
+              temp.foreach {
+                case (id, weight) => {
+                  print(f"$weight%2.4f : $id : ")
+                  println(corpus.where($"id" === id).select("title").first().getAs[String]("title"))
+                }
+              }
+            }
+            println(s"\n==========")
+        }
       }
     }
   }
