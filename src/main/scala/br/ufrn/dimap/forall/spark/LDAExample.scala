@@ -27,22 +27,22 @@ object LDAExample {
   
   case class Params(
     val appName       : String = "LDA"
-  , val master        : String = "local[*]"
-  , val resSOPosts    : String = "./resources/Posts-Spark-100.xml" // Stack Overflow's Posts Dataset
-  , val resCorpusQ    : String = "./resources/CorpusQ"             // Corpus of Questions (documents are question's title and body) 
-  , val resCorpusQT   : String = "./resources/CorpusQT"            // Corpus of Questions (documents are only question's title)
-  , val resCorpusA    : String = "./resources/CorpusA"             // Corpus of Answers (documents are answers' body)
-  , val resCorpusQA   : String = "./resources/CorpusQA"            // Corpus of Questions and answers (documents are question's title and body concatenated with all the bodies of the answers to the question) 
-  , val resStopwords  : String = "./resources/stopwords.txt"       // Set of words to be ignored as tokens
-  , val checkpointDir : String = "./resources/checkpoint"
-//  , val master        : String = "spark://10.7.40.42:7077"
-//  , val resSOPosts    : String = "hdfs://master:54310/user/hduser/stackoverflow/Posts.xml"
-//  , val resCorpusQ    : String = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQ"
-//  , val resCorpusQT   : String = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQT"
-//  , val resCorpusA    : String = "hdfs://master:54310/user/hduser/stackoverflow/CorpusA"
-//  , val resCorpusQA   : String = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQA"
-//  , val resStopwords  : String = "hdfs://master:54310/user/hduser/stackoverflow/stopwords.txt"
-//  , val checkpointDir : String = "hdfs://master:54310/user/hduser/stackoverflow/checkpoint"
+//  , val master        : String = "local[*]"
+//  , val resSOPosts    : String = "./resources/Posts-Spark-100.xml" // Stack Overflow's Posts Dataset
+//  , val resCorpusQ    : String = "./resources/CorpusQ"             // Corpus of Questions (documents are question's title and body) 
+//  , val resCorpusQT   : String = "./resources/CorpusQT"            // Corpus of Questions (documents are only question's title)
+//  , val resCorpusA    : String = "./resources/CorpusA"             // Corpus of Answers (documents are answers' body)
+//  , val resCorpusQA   : String = "./resources/CorpusQA"            // Corpus of Questions and answers (documents are question's title and body concatenated with all the bodies of the answers to the question) 
+//  , val resStopwords  : String = "./resources/stopwords.txt"       // Set of words to be ignored as tokens
+//  , val checkpointDir : String = "./resources/checkpoint"
+  , val master        : String = "spark://10.7.40.42:7077"
+  , val resSOPosts    : String = "hdfs://master:54310/user/hduser/stackoverflow/Posts.xml"
+  , val resCorpusQ    : String = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQ"
+  , val resCorpusQT   : String = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQT"
+  , val resCorpusA    : String = "hdfs://master:54310/user/hduser/stackoverflow/CorpusA"
+  , val resCorpusQA   : String = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQA"
+  , val resStopwords  : String = "hdfs://master:54310/user/hduser/stackoverflow/stopwords.txt"
+  , val checkpointDir : String = "hdfs://master:54310/user/hduser/stackoverflow/checkpoint"
   , val minTermLenght : Int = 3  // A term should have at least minTermLenght characters to be considered as token
   , val qtyOfTopTerms : Int = 20 // how many top terms should be printed on output
   , val termMinDocFreq: Int = 3  // minimum number of different documents a term must appear in to be included in the vocabulary
@@ -53,7 +53,7 @@ object LDAExample {
   , val beta          : Double = -1 // LDA dirichlet prior probability placed on topic-word distribution. Choose a low beta if your topics are made up of a few dominant words
   , val maxIterations : Int = 1000 // number of LDA training iterations
   , val termsPerTopic : Int = 20 // how many terms per topic should be printed on output 
-  , val topDocPerTopic: Int = 5 // how many top documents per topic should be printed on output
+  , val topDocPerTopic: Int = 10 // how many top documents per topic should be printed on output
   , val prtTopTerms   : Boolean = true
   , val prtStats      : Boolean = true
   , val describeTopics: Boolean = true
@@ -96,7 +96,7 @@ object LDAExample {
       .getOrCreate()
     spark.sparkContext.setCheckpointDir(params.checkpointDir)
     
-//    processing(spark, params)
+    processing(spark, params)
     reading(spark, params)
     spark.stop()
   }
@@ -236,10 +236,10 @@ object LDAExample {
     
 //    corpusQT.show()
     corpusQT.write.mode(SaveMode.Overwrite).parquet(params.resCorpusQT + ".parquet")
-    corpusQT
-      .withColumn("doc", expr("concat_ws(' ', document)"))
-      .selectExpr("id", "doc")
-      .write.mode(SaveMode.Overwrite).csv(params.resCorpusQT + ".csv")
+//  corpusQT
+//    .withColumn("doc", expr("concat_ws(' ', document)"))
+//    .selectExpr("id", "doc")
+//    .write.mode(SaveMode.Overwrite).csv(params.resCorpusQT + ".csv")
        
     // Corpus Q
     val cleanedQ = sparkQuestions
@@ -258,10 +258,10 @@ object LDAExample {
     
 //    corpusQ.show()
     corpusQ.write.mode(SaveMode.Overwrite).parquet(params.resCorpusQ + ".parquet")
-    corpusQ
-      .withColumn("doc", expr("concat_ws(' ', document)"))
-      .selectExpr("id", "doc")
-      .write.mode(SaveMode.Overwrite).csv(params.resCorpusQ + ".csv")
+//  corpusQ
+//    .withColumn("doc", expr("concat_ws(' ', document)"))
+//    .selectExpr("id", "doc")
+//    .write.mode(SaveMode.Overwrite).csv(params.resCorpusQ + ".csv")
     
     // Obter Posts com respostas a perguntas sobre Spark
     val stackAnswers = posts
@@ -295,10 +295,10 @@ object LDAExample {
     
 //    corpusA.show()
     corpusA.write.mode(SaveMode.Overwrite)parquet(params.resCorpusA + ".parquet")
-    corpusA
-      .withColumn("doc", expr("concat_ws(' ', document)"))
-      .selectExpr("id", "doc")
-      .write.mode(SaveMode.Overwrite).csv(params.resCorpusA + ".csv")
+//  corpusA
+//    .withColumn("doc", expr("concat_ws(' ', document)"))
+//    .selectExpr("id", "doc")
+//    .write.mode(SaveMode.Overwrite).csv(params.resCorpusA + ".csv")
     
     // Corpus QA
     // Obter Posts com perguntas sobre Spark e suas respectivas respostas
@@ -322,37 +322,36 @@ object LDAExample {
 
 //    corpusQA.show()
     corpusQA.write.mode(SaveMode.Overwrite).parquet(params.resCorpusQA + ".parquet")
-    corpusQA
-      .withColumn("doc", expr("concat_ws(' ', document)"))
-      .selectExpr("id", "doc")
-      .write.mode(SaveMode.Overwrite).csv(params.resCorpusQA + ".csv")
+//  corpusQA
+//    .withColumn("doc", expr("concat_ws(' ', document)"))
+//    .selectExpr("id", "doc")
+//    .write.mode(SaveMode.Overwrite).csv(params.resCorpusQA + ".csv")
   }
   
   def reading(spark: SparkSession, params: Params) {
     val corpusQT = spark.read.parquet(params.resCorpusQT + ".parquet")
-//    corpusQT.printSchema()
-//    corpusQT.show()
     var stats = Stats()
     stats.corpusSize = corpusQT.count()
-    lda_runner(corpusQT, spark, params, stats)
+    lda_runner("QT", corpusQT, spark, params, stats)
     
-//    val corpusQ = spark.read.parquet(params.resCorpusQ)
-//    println("\nAnalyzing Questions")
-//    lda_runner(corpusQ, spark, params)
-////    println("Questions = " + corpusQ.count())
-//    val corpusA = spark.read.parquet(params.resCorpusA)
-//    println("\nAnalyzing Answers")
-//    lda_runner(corpusA, spark, params)
-////    println("Answers = " + corpusA.count())
-//    val corpusQA = spark.read.parquet(params.resCorpusQA)
-//    println("\nAnalyzing Questions + Answers")
-//    lda_runner(corpusQA, spark, params)
-////    println("Q n A = " + corpusQA.count())
-    
+    val corpusQ = spark.read.parquet(params.resCorpusQ + ".parquet")
+    stats = Stats()
+    stats.corpusSize = corpusQ.count()
+    lda_runner("Q", corpusQ, spark, params, stats)
+
+    val corpusA = spark.read.parquet(params.resCorpusA + ".parquet")
+    stats = Stats()
+    stats.corpusSize = corpusA.count()
+    lda_runner("A", corpusA, spark, params, stats)
+
+    val corpusQA = spark.read.parquet(params.resCorpusQA + ".parquet")
+    stats = Stats()
+    stats.corpusSize = corpusQA.count()
+    lda_runner("QA", corpusQA, spark, params, stats)
   }
   
-  def lda_runner(corpus : DataFrame, spark: SparkSession, params: Params, stats: Stats) {
-    
+  def lda_runner(id : String, corpus : DataFrame, spark: SparkSession, params: Params, stats: Stats) {
+    println(s"Analyzing Corpus $id")
     // Removing additional stopwords
     val stopwords = Array("apache", "spark")
     val remover = new StopWordsRemover()
@@ -360,7 +359,7 @@ object LDAExample {
       .setInputCol("document")
       .setOutputCol("removed")
     val removed = remover.transform(corpus)
-        
+    
     // Top Terms in whole corpus
     if (params.prtTopTerms) {
       removed.persist(MEMORY_ONLY)
