@@ -10,4 +10,5 @@
 *.parquet
 .cache-main
 .classpath
-resources/Posts-Spark.xml
+resources/*
+output*
