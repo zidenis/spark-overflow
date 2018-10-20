@@ -353,9 +353,9 @@ object LDAExample {
   def lda_runner(id : String, corpus : DataFrame, spark: SparkSession, params: Params, stats: Stats) {
     println(s"Analyzing Corpus $id")
     // Removing additional stopwords
-    val stopwords = Array("apach", "spark", "pyspark", "java", "python", "whi", "file", "datafram", 
-        "how", "rdd", "use", "scala", "data", "way", "code", "function", "valu", "need", "thank",
-        "dataset", "sql", "row", "column", "know", "run")
+    val stopwords = Array("apach", "spark", "pyspark", "java", "python", "file", "datafram", 
+        "rdd", "scala", "data", "code", "function", "valu", "need",
+        "dataset", "sql", "row", "column", "run", "org")
     val remover = new StopWordsRemover()
       .setStopWords(stopwords)
       .setInputCol("document")
@@ -422,11 +422,11 @@ object LDAExample {
     var docConcentration = params.alpha
     var topicConcentration = params.beta
     if (params.optimizer.equals("em")) {
-      if (params.alpha == -1) docConcentration = (50/params.qtyLDATopics)+1
+      if (params.alpha == -1) docConcentration = (50.0/params.qtyLDATopics)+1.0
       if (params.beta == -1) topicConcentration = 1.1
     } else if (params.optimizer.equals("online")){
-      if (params.alpha == -1) docConcentration = 1/params.qtyLDATopics
-      if (params.beta == -1) topicConcentration = 1/params.qtyLDATopics
+      if (params.alpha == -1) docConcentration = 1.0/params.qtyLDATopics
+      if (params.beta == -1) topicConcentration = 1.0/params.qtyLDATopics
     }
     
     val lda = new LDA()
