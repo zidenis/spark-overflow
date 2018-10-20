@@ -54,7 +54,7 @@ object LDAExample {
   , val maxIterations : Int = 1000 // number of LDA training iterations
   , val termsPerTopic : Int = 20 // how many terms per topic should be printed on output 
   , val topDocPerTopic: Int = 10 // how many top documents per topic should be printed on output
-  , val prtTopTerms   : Boolean = true
+  , val prtTopTerms   : Boolean = false
   , val prtStats      : Boolean = true
   , val describeTopics: Boolean = true
   , val horizontOutput: Boolean = true
@@ -96,7 +96,7 @@ object LDAExample {
       .getOrCreate()
     spark.sparkContext.setCheckpointDir(params.checkpointDir)
     
-    processing(spark, params)
+//    processing(spark, params)
     reading(spark, params)
     spark.stop()
   }
@@ -353,7 +353,9 @@ object LDAExample {
   def lda_runner(id : String, corpus : DataFrame, spark: SparkSession, params: Params, stats: Stats) {
     println(s"Analyzing Corpus $id")
     // Removing additional stopwords
-    val stopwords = Array("apache", "spark")
+    val stopwords = Array("apach", "spark", "pyspark", "java", "python", "whi", "file", "datafram", 
+        "how", "rdd", "use", "scala", "data", "way", "code", "function", "valu", "need", "thank",
+        "dataset", "sql", "row", "column", "know", "run")
     val remover = new StopWordsRemover()
       .setStopWords(stopwords)
       .setInputCol("document")
