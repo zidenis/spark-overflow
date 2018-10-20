@@ -466,7 +466,7 @@ object LDAExample {
             val topDocs = distLDAModel.topDocumentsPerTopic(params.topDocPerTopic)
             (topDocs(i)._1).zip(topDocs(i)._2).foreach {
               case (id, weight) => {
-                lines += s"$id : " + corpus.where($"id" === id).select("title", "tags").first().mkString(" : ") + f" : $weight%2.4f"
+                lines += s"$id : " + corpus.where($"id" === id).select("title").first().mkString(" : ") + f" : $weight%2.4f"
               }
             }
             columns += lines            
