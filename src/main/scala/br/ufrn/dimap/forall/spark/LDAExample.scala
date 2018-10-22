@@ -70,7 +70,7 @@ object LDAExample {
   , val maxIterations : Int = 1000 // number of LDA training iterations
   , val termsPerTopic : Int = 20 // how many terms per topic should be printed on output 
   , val topDocPerTopic: Int = 10 // how many top documents per topic should be printed on output
-  , val prtTopTerms   : Boolean = false
+  , val prtTopTerms   : Boolean = true
   , val prtStats      : Boolean = true
   , val describeTopics: Boolean = true
   , val horizontOutput: Boolean = true
@@ -369,9 +369,8 @@ object LDAExample {
   def lda_runner(id : String, corpus : DataFrame, spark: SparkSession, params: Params, stats: Stats) {
     println(s"Analyzing Corpus $id")
     // Removing additional stopwords
-    val stopwords = Array("apach", "spark", "pyspark", "java", "python", "file", "datafram", 
-        "rdd", "scala", "data", "code", "function", "valu", "need",
-        "dataset", "sql", "row", "column", "run", "org")
+    // val stopwords = Array("apach", "spark", "pyspark", "java", "python", "file", "datafram", "rdd", "scala", "data", "code", "function", "valu", "need", "dataset", "sql", "row", "column", "run", "org")
+    val stopwords = Array("apach", "spark", "org", "code")
     val remover = new StopWordsRemover()
       .setStopWords(stopwords)
       .setInputCol("document")
