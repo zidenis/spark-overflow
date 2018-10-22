@@ -27,6 +27,8 @@ object LDAExample {
   
   case class Params(
     val appName       : String = "LDA"
+
+// Local
 //  , val master        : String = "local[*]"
 //  , val resSOPosts    : String = "./resources/Posts-Spark-100.xml" // Stack Overflow's Posts Dataset
 //  , val resCorpusQ    : String = "./resources/CorpusQ"             // Corpus of Questions (documents are question's title and body) 
@@ -35,14 +37,28 @@ object LDAExample {
 //  , val resCorpusQA   : String = "./resources/CorpusQA"            // Corpus of Questions and answers (documents are question's title and body concatenated with all the bodies of the answers to the question) 
 //  , val resStopwords  : String = "./resources/stopwords.txt"       // Set of words to be ignored as tokens
 //  , val checkpointDir : String = "./resources/checkpoint"
-  , val master        : String = "spark://10.7.40.42:7077"
-  , val resSOPosts    : String = "hdfs://master:54310/user/hduser/stackoverflow/Posts.xml"
-  , val resCorpusQ    : String = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQ"
-  , val resCorpusQT   : String = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQT"
-  , val resCorpusA    : String = "hdfs://master:54310/user/hduser/stackoverflow/CorpusA"
-  , val resCorpusQA   : String = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQA"
-  , val resStopwords  : String = "hdfs://master:54310/user/hduser/stackoverflow/stopwords.txt"
-  , val checkpointDir : String = "hdfs://master:54310/user/hduser/stackoverflow/checkpoint"
+
+// Cluster IMD
+//  , val master        : String = "spark://10.7.40.42:7077"
+//  , val resSOPosts    : String = "hdfs://master:54310/user/hduser/stackoverflow/Posts.xml"
+//  , val resCorpusQ    : String = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQ"
+//  , val resCorpusQT   : String = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQT"
+//  , val resCorpusA    : String = "hdfs://master:54310/user/hduser/stackoverflow/CorpusA"
+//  , val resCorpusQA   : String = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQA"
+//  , val resStopwords  : String = "hdfs://master:54310/user/hduser/stackoverflow/stopwords.txt"
+//  , val checkpointDir : String = "hdfs://master:54310/user/hduser/stackoverflow/checkpoint"
+
+// Cluster Denis
+  , val master        : String = "spark://spark-node-1:7077"
+  , val resSOPosts    : String = "hdfs://spark-node-1:9000/stackoverflow/Posts.xml"
+  , val resCorpusQ    : String = "hdfs://spark-node-1:9000/stackoverflow/CorpusQ"
+  , val resCorpusQT   : String = "hdfs://spark-node-1:9000/stackoverflow/CorpusQT"
+  , val resCorpusA    : String = "hdfs://spark-node-1:9000/stackoverflow/CorpusA"
+  , val resCorpusQA   : String = "hdfs://spark-node-1:9000/stackoverflow/CorpusQA"
+  , val resStopwords  : String = "hdfs://spark-node-1:9000/stackoverflow/stopwords.txt"
+  , val checkpointDir : String = "hdfs://spark-node-1:9000/stackoverflow/checkpoint"
+
+// Experiment Configurations
   , val minTermLenght : Int = 3  // A term should have at least minTermLenght characters to be considered as token
   , val qtyOfTopTerms : Int = 20 // how many top terms should be printed on output
   , val termMinDocFreq: Int = 3  // minimum number of different documents a term must appear in to be included in the vocabulary
