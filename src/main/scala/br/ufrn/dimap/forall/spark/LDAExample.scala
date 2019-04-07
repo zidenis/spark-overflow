@@ -33,7 +33,6 @@ object LDAExample {
 //  , val resSOPosts    : String = "./resources/Posts-Spark-100.xml" // Stack Overflow's Posts Dataset
 //  , val resCorpusQ    : String = "./resources/CorpusQ"             // Corpus of Questions (documents are question's title and body) 
 //  , val resCorpusQT   : String = "./resources/CorpusQT"            // Corpus of Questions (documents are only question's title)
-//  , val resCorpusA    : String = "./resources/CorpusA"             // Corpus of Answers (documents are answers' body)
 //  , val resCorpusQA   : String = "./resources/CorpusQA"            // Corpus of Questions and answers (documents are question's title and body concatenated with all the bodies of the answers to the question) 
 //  , val resStopwords  : String = "./resources/stopwords.txt"       // Set of words to be ignored as tokens
 //  , val checkpointDir : String = "./resources/checkpoint"
@@ -43,7 +42,6 @@ object LDAExample {
   , val resSOPosts    : String = "hdfs://master:54310/user/hduser/stackoverflow/Posts.xml"
   , val resCorpusQ    : String = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQ"
   , val resCorpusQT   : String = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQT"
-  , val resCorpusA    : String = "hdfs://master:54310/user/hduser/stackoverflow/CorpusA"
   , val resCorpusQA   : String = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQA"
   , val resStopwords  : String = "hdfs://master:54310/user/hduser/stackoverflow/stopwords.txt"
   , val checkpointDir : String = "hdfs://master:54310/user/hduser/stackoverflow/checkpoint"
@@ -53,17 +51,16 @@ object LDAExample {
 //  , val resSOPosts    : String = "hdfs://spark-node-1:9000/stackoverflow/Posts.xml"
 //  , val resCorpusQ    : String = "hdfs://spark-node-1:9000/stackoverflow/CorpusQ"
 //  , val resCorpusQT   : String = "hdfs://spark-node-1:9000/stackoverflow/CorpusQT"
-//  , val resCorpusA    : String = "hdfs://spark-node-1:9000/stackoverflow/CorpusA"
 //  , val resCorpusQA   : String = "hdfs://spark-node-1:9000/stackoverflow/CorpusQA"
 //  , val resStopwords  : String = "hdfs://spark-node-1:9000/stackoverflow/stopwords.txt"
 //  , val checkpointDir : String = "hdfs://spark-node-1:9000/stackoverflow/checkpoint"
 
 // Experiment Configurations
-  , val minTermLenght : Int = 3  // A term should have at least minTermLenght characters to be considered as token
+  , val minTermLenght : Int = 2  // A term should have at least minTermLenght characters to be considered as token
   , val qtyOfTopTerms : Int = 20 // how many top terms should be printed on output
   , val termMinDocFreq: Int = 3  // minimum number of different documents a term must appear in to be included in the vocabulary
-  , var qtyLDATopics  : Int = 30 // number of LDA latent topics
-  , val minQtyLDATop  : Int = 10
+  , var qtyLDATopics  : Int = 20 // number of LDA latent topics
+  , val minQtyLDATop  : Int = 60
   , val optimizer     : String = "em"
   , val alpha         : Double = -1 // LDA dirichlet prior probability placed on document-topic distribution. Choose a low alpha if your documents are made up of a few dominant topics 
   , val beta          : Double = -1 // LDA dirichlet prior probability placed on topic-word distribution. Choose a low beta if your topics are made up of a few dominant words
@@ -74,6 +71,10 @@ object LDAExample {
   , val prtStats      : Boolean = true
   , val describeTopics: Boolean = true
   , val horizontOutput: Boolean = true
+  , val corpusQT      : Boolean = true
+  , val corpusQ       : Boolean = false
+  , val corpusQA      : Boolean = false
+  , val outputCSV     : Boolean = false
   )
   
   case class Stats(
@@ -112,7 +113,7 @@ object LDAExample {
       .getOrCreate()
     spark.sparkContext.setCheckpointDir(params.checkpointDir)
     
-//    processing(spark, params)
+    processing(spark, params)
     reading(spark, params)
     spark.stop()
   }
@@ -217,11 +218,6 @@ object LDAExample {
       .withColumn("sparkRelated", expr("sparkRelated(tags)")) // posts com tag de spark
       .where("sparkRelated") // somente com tags de spark
     sparkQuestions.persist(MEMORY_ONLY)
-    
-    // Corpus QT
-    // Clean document's string
-    val cleanedQT = sparkQuestions
-      .withColumn("cleaned", expr("cleanDocument(title)"))
       
     // Tokenization
     val tokenizer = new RegexTokenizer()
@@ -229,7 +225,6 @@ object LDAExample {
       .setMinTokenLength(params.minTermLenght) // Filter away tokens with length < minTokenLenght
       .setInputCol("cleaned")
       .setOutputCol("tokenized")
-    val tokenizedQT = tokenizer.transform(cleanedQT)
     
     // Removing stopwords
     val stopwords = spark.sparkContext.textFile(params.resStopwords).collect()
@@ -237,133 +232,133 @@ object LDAExample {
       .setStopWords(stopwords)
       .setInputCol("tokenized")
       .setOutputCol("removed")
-    val removedQT = remover.transform(tokenizedQT)
     
     // Stemming
     val stemmer = new Stemmer()
       .setInputCol("removed")
       .setOutputCol("document")
       .setLanguage("English")
-    val stemmedQT = stemmer.transform(removedQT)
     
-    // Corpus de Perguntas em que cada documento eh apenas o titulo da pergunta
-    val corpusQT = stemmedQT
-      .select("id", "creationDate", "score", "viewCount", "title", "document", "tags", "answerCount", "favoriteCount")
+    // Corpus QT : Corpus de Perguntas em que cada documento eh apenas o titulo da pergunta
+    if (params.corpusQT) {
+      println(s"Processing Corpus QT")
+      val cleanedQT = sparkQuestions // Documents pre-processing
+      .withColumn("cleaned", expr("cleanDocument(title)"))
+      val tokenizedQT = tokenizer.transform(cleanedQT)
+      val removedQT = remover.transform(tokenizedQT)
+      val stemmedQT = stemmer.transform(removedQT)
+      val corpusQT = stemmedQT
+        .select("id", "creationDate", "score", "viewCount", "title", "document", "tags", "answerCount", "favoriteCount")
     
-//    corpusQT.show()
-    corpusQT.write.mode(SaveMode.Overwrite).parquet(params.resCorpusQT + ".parquet")
-//  corpusQT
-//    .withColumn("doc", expr("concat_ws(' ', document)"))
-//    .selectExpr("id", "doc")
-//    .write.mode(SaveMode.Overwrite).csv(params.resCorpusQT + ".csv")
-       
-    // Corpus Q
-    val cleanedQ = sparkQuestions
-      .withColumn("title_body", concat($"title", lit(" "), $"body"))
-      .withColumn("cleaned", expr("cleanDocument(title_body)"))  
-    cleanedQ.persist(MEMORY_ONLY)
-    cleanedQ.createOrReplaceTempView("corpusQ")
-    
-    val tokenizedQ = tokenizer.transform(cleanedQ)
-    val removedQ = remover.transform(tokenizedQ)
-    val stemmedQ = stemmer.transform(removedQ)
-    
-    // Corpus de Perguntas em que cada documento eh o titulo cocatenado com o corpo da pergunta
-    val corpusQ = stemmedQ
-      .select("id", "creationDate", "score", "viewCount", "title", "document", "tags", "answerCount", "favoriteCount")
-    
-//    corpusQ.show()
-    corpusQ.write.mode(SaveMode.Overwrite).parquet(params.resCorpusQ + ".parquet")
-//  corpusQ
-//    .withColumn("doc", expr("concat_ws(' ', document)"))
-//    .selectExpr("id", "doc")
-//    .write.mode(SaveMode.Overwrite).csv(params.resCorpusQ + ".csv")
-    
-    // Obter Posts com respostas a perguntas sobre Spark
-    val stackAnswers = posts
-      .where("postTypeId = 2") // somente respostas
-    stackAnswers.createOrReplaceTempView("stackAnswers")
+      // corpusQT.show()
+      corpusQT.write.mode(SaveMode.Overwrite).parquet(params.resCorpusQT + ".parquet")
+      if (params.outputCSV) {
+        corpusQT.withColumn("doc", expr("concat_ws(' ', document)"))
+          .selectExpr("id", "doc")
+          .write.mode(SaveMode.Overwrite).csv(params.resCorpusQT + ".csv")  
+      }
+    }
       
-    // Corpus A
-    // Corpus de Respostas em que cada documento eh a concatenacao dos corpos das respostas dada a cada pergunta
-    val cleanedA = sql("""
-      SELECT answers.id, corpusQ.title, answers.cleaned 
-        FROM (
-      SELECT a.parentId as id
-           , cleanDocument(concat_ws(' ', collect_list(a.body))) as cleaned
-        FROM stackAnswers a 
-   LEFT SEMI JOIN corpusQ q 
-          ON a.parentId = q.id 
-    GROUP BY a.parentId
-        ) as answers
-   LEFT JOIN corpusQ
-          ON answers.id = corpusQ.id       
-    """)
-    cleanedA.persist(MEMORY_ONLY)
-    cleanedA.createOrReplaceTempView("corpusA")
-    
-    val tokenizedA = tokenizer.transform(cleanedA)
-    val removedA = remover.transform(tokenizedA)
-    val stemmedA = stemmer.transform(removedA)
-    
-    val corpusA = stemmedA
-      .select("id", "title", "document")
-    
-//    corpusA.show()
-    corpusA.write.mode(SaveMode.Overwrite)parquet(params.resCorpusA + ".parquet")
-//  corpusA
-//    .withColumn("doc", expr("concat_ws(' ', document)"))
-//    .selectExpr("id", "doc")
-//    .write.mode(SaveMode.Overwrite).csv(params.resCorpusA + ".csv")
-    
-    // Corpus QA
-    // Obter Posts com perguntas sobre Spark e suas respectivas respostas
-    val sparkQA = sql("""
-      SELECT q.id, q.title, q.cleaned qd, a.cleaned ad, q.creationDate, q.score, q.viewCount, q.tags, q.answerCount, q.favoriteCount
-        FROM corpusQ q 
-   LEFT JOIN corpusA a 
-          ON q.id = a.id
-    """)
-    
-    val cleanedQA = sparkQA
-      .withColumn("ad_not_null", coalesce($"ad",lit(""))) // para o caso de perguntas sem respostas
-      .withColumn("cleaned", concat($"qd", lit(" "), $"ad_not_null"))
+    // Corpus Q : Corpus de Perguntas em que cada documento eh o titulo cocatenado com o corpo da pergunta
+    if (params.corpusQ) {
+      println(s"Processing Corpus Q")
+      val cleanedQ = sparkQuestions
+        .withColumn("title_body", concat($"title", lit(" "), $"body"))
+        .withColumn("cleaned", expr("cleanDocument(title_body)"))  
+      cleanedQ.persist(MEMORY_ONLY)
+      cleanedQ.createOrReplaceTempView("corpusQ")
+      val tokenizedQ = tokenizer.transform(cleanedQ)
+      val removedQ = remover.transform(tokenizedQ)
+      val stemmedQ = stemmer.transform(removedQ)
+      val corpusQ = stemmedQ
+        .select("id", "creationDate", "score", "viewCount", "title", "document", "tags", "answerCount", "favoriteCount")
       
-    val tokenizedQA = tokenizer.transform(cleanedQA)
-    val removedQA = remover.transform(tokenizedQA)
-    val stemmedQA = stemmer.transform(removedQA)  
+      // corpusQ.show()
+      corpusQ.write.mode(SaveMode.Overwrite).parquet(params.resCorpusQ + ".parquet")
+      if (params.outputCSV) {
+        corpusQ.withColumn("doc", expr("concat_ws(' ', document)"))
+          .selectExpr("id", "doc")
+          .write.mode(SaveMode.Overwrite).csv(params.resCorpusQ + ".csv")
+      }
+    }
     
-    val corpusQA = stemmedQA
-      .select("id", "creationDate", "score", "viewCount", "title", "document", "tags", "answerCount", "favoriteCount")
-
-//    corpusQA.show()
-    corpusQA.write.mode(SaveMode.Overwrite).parquet(params.resCorpusQA + ".parquet")
-//  corpusQA
-//    .withColumn("doc", expr("concat_ws(' ', document)"))
-//    .selectExpr("id", "doc")
-//    .write.mode(SaveMode.Overwrite).csv(params.resCorpusQA + ".csv")
+    if (params.corpusQA) {
+      println(s"Processing Corpus QA")
+      // Obter Posts com respostas a perguntas sobre Spark
+      val stackAnswers = posts
+        .where("postTypeId = 2") // somente respostas
+      stackAnswers.createOrReplaceTempView("stackAnswers")
+      // Corpus A: Corpus de Respostas em que cada documento eh a concatenacao dos corpos das respostas dada a cada pergunta
+      val cleanedA = sql("""
+        SELECT answers.id, corpusQ.title, answers.cleaned 
+          FROM (
+        SELECT a.parentId as id
+             , cleanDocument(concat_ws(' ', collect_list(a.body))) as cleaned
+          FROM stackAnswers a 
+     LEFT SEMI JOIN corpusQ q 
+            ON a.parentId = q.id 
+      GROUP BY a.parentId
+          ) as answers
+     LEFT JOIN corpusQ
+            ON answers.id = corpusQ.id       
+      """)
+      cleanedA.persist(MEMORY_ONLY)
+      cleanedA.createOrReplaceTempView("corpusA")
+      val tokenizedA = tokenizer.transform(cleanedA)
+      val removedA = remover.transform(tokenizedA)
+      val stemmedA = stemmer.transform(removedA)
+      val corpusA = stemmedA
+        .select("id", "title", "document")
+      
+      // Corpus QA
+      // Obter Posts com perguntas sobre Spark e suas respectivas respostas
+      val sparkQA = sql("""
+        SELECT q.id, q.title, q.cleaned qd, a.cleaned ad, q.creationDate, q.score, q.viewCount, q.tags, q.answerCount, q.favoriteCount
+          FROM corpusQ q 
+     LEFT JOIN corpusA a 
+            ON q.id = a.id
+      """)
+      
+      val cleanedQA = sparkQA
+        .withColumn("ad_not_null", coalesce($"ad",lit(""))) // para o caso de perguntas sem respostas
+        .withColumn("cleaned", concat($"qd", lit(" "), $"ad_not_null"))
+      val tokenizedQA = tokenizer.transform(cleanedQA)
+      val removedQA = remover.transform(tokenizedQA)
+      val stemmedQA = stemmer.transform(removedQA)  
+      val corpusQA = stemmedQA
+        .select("id", "creationDate", "score", "viewCount", "title", "document", "tags", "answerCount", "favoriteCount")
+  
+  //    corpusQA.show()
+      corpusQA.write.mode(SaveMode.Overwrite).parquet(params.resCorpusQA + ".parquet")
+      if (params.outputCSV) {
+        corpusQA.withColumn("doc", expr("concat_ws(' ', document)"))
+          .selectExpr("id", "doc")
+          .write.mode(SaveMode.Overwrite).csv(params.resCorpusQA + ".csv")  
+      }
+    }
   }
   
   def reading(spark: SparkSession, params: Params) {
-    val corpusQT = spark.read.parquet(params.resCorpusQT + ".parquet")
     var stats = Stats()
-    stats.corpusSize = corpusQT.count()
-    lda_runner("QT", corpusQT, spark, params, stats)
-    
-    val corpusQ = spark.read.parquet(params.resCorpusQ + ".parquet")
-    stats = Stats()
-    stats.corpusSize = corpusQ.count()
-    lda_runner("Q", corpusQ, spark, params, stats)
+    if (params.corpusQT) {
+      val corpusQT = spark.read.parquet(params.resCorpusQT + ".parquet")
+      stats.corpusSize = corpusQT.count()
+      lda_runner("QT", corpusQT, spark, params, stats)
+    }
+      
+    if (params.corpusQ) {
+      val corpusQ = spark.read.parquet(params.resCorpusQ + ".parquet")
+      stats = Stats()
+      stats.corpusSize = corpusQ.count()
+      lda_runner("Q", corpusQ, spark, params, stats)
+    }
 
-    val corpusA = spark.read.parquet(params.resCorpusA + ".parquet")
-    stats = Stats()
-    stats.corpusSize = corpusA.count()
-    lda_runner("A", corpusA, spark, params, stats)
-
-    val corpusQA = spark.read.parquet(params.resCorpusQA + ".parquet")
-    stats = Stats()
-    stats.corpusSize = corpusQA.count()
-    lda_runner("QA", corpusQA, spark, params, stats)
+    if (params.corpusQA) {
+      val corpusQA = spark.read.parquet(params.resCorpusQA + ".parquet")
+      stats = Stats()
+      stats.corpusSize = corpusQA.count()
+      lda_runner("QA", corpusQA, spark, params, stats)
+    }
   }
   
   def lda_runner(id : String, corpus : DataFrame, spark: SparkSession, params: Params, stats: Stats) {
