@@ -23,10 +23,10 @@ import org.apache.spark.SparkConf
 import org.apache.spark.mllib.feature.Stemmer
 import scala.collection.mutable.ListBuffer
 
-object LDAExample {
+object SparkOverflow {
   
   case class Params(
-    val appName       : String = "LDA"
+    val appName       : String = "SparkOverflow"
 
 // Local
 //  , val master        : String = "local[*]"
@@ -241,7 +241,7 @@ object LDAExample {
     
     // Corpus QT : Corpus de Perguntas em que cada documento eh apenas o titulo da pergunta
     if (params.corpusQT) {
-      println(s"Processing Corpus QT")
+      println(s"${Instant.now()} : Processing Corpus QT")
       val cleanedQT = sparkQuestions // Documents pre-processing
       .withColumn("cleaned", expr("cleanDocument(title)"))
       val tokenizedQT = tokenizer.transform(cleanedQT)
@@ -261,7 +261,7 @@ object LDAExample {
       
     // Corpus Q : Corpus de Perguntas em que cada documento eh o titulo cocatenado com o corpo da pergunta
     if (params.corpusQ) {
-      println(s"Processing Corpus Q")
+      println(s"${Instant.now()} : Processing Corpus Q")
       val cleanedQ = sparkQuestions
         .withColumn("title_body", concat($"title", lit(" "), $"body"))
         .withColumn("cleaned", expr("cleanDocument(title_body)"))  
@@ -283,7 +283,7 @@ object LDAExample {
     }
     
     if (params.corpusQA) {
-      println(s"Processing Corpus QA")
+      println(s"${Instant.now()} : Processing Corpus QA")
       // Obter Posts com respostas a perguntas sobre Spark
       val stackAnswers = posts
         .where("postTypeId = 2") // somente respostas
@@ -362,7 +362,7 @@ object LDAExample {
   }
   
   def lda_runner(id : String, corpus : DataFrame, spark: SparkSession, params: Params, stats: Stats) {
-    println(s"Analyzing Corpus $id")
+    println(s"${Instant.now()} : Analyzing Corpus $id")
     // Removing too frequent words
     // val stopwords = Array("apach", "spark", "org", "code")
     val stopwords = Array("http", "https", "github", "html", "apach", "class", "code", "data", "didnt", "didn", "doesn", "don", "give", "good", "implement", "main", "make", "need", "object", "org", "program", "solut", "spark", "understand", "util", "want", "wasn", "way", "work")

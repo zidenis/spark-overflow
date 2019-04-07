@@ -1,4 +1,4 @@
-name := "LDA-Example"
+name := "SparkOverflow"
 
 version := "1.0"
 
