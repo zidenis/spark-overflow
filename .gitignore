@@ -10,4 +10,8 @@
 *.parquet
 .cache-main
 .classpath
-resources/Posts-Spark.xml
+resources/*
+!resources/stopwords.txt
+!resources/long_stopwords_list.txt
+!resources/Posts-Spark-100.xml
+
