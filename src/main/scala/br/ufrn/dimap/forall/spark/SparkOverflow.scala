@@ -22,60 +22,47 @@ import java.sql.Timestamp
 import org.apache.spark.SparkConf
 import org.apache.spark.mllib.feature.Stemmer
 import scala.collection.mutable.ListBuffer
+import scala.beans.BeanProperty
+import com.typesafe.config.ConfigFactory
+import com.typesafe.config.ConfigBeanFactory
 
 object SparkOverflow {
   
   case class Params(
-    val appName       : String = "SparkOverflow"
+    @BeanProperty var appName       : String
 
-// Local
-//  , val master        : String = "local[*]"
-//  , val resSOPosts    : String = "./resources/Posts-Spark-100.xml" // Stack Overflow's Posts Dataset
-//  , val resCorpusQ    : String = "./resources/CorpusQ"             // Corpus of Questions (documents are question's title and body) 
-//  , val resCorpusQT   : String = "./resources/CorpusQT"            // Corpus of Questions (documents are only question's title)
-//  , val resCorpusQA   : String = "./resources/CorpusQA"            // Corpus of Questions and answers (documents are question's title and body concatenated with all the bodies of the answers to the question) 
-//  , val resStopwords  : String = "./resources/stopwords.txt"       // Set of words to be ignored as tokens
-//  , val checkpointDir : String = "./resources/checkpoint"
-
-// Cluster IMD
-  , val master        : String = "spark://10.7.40.42:7077"
-  , val resSOPosts    : String = "hdfs://master:54310/user/hduser/stackoverflow/Posts.xml"
-  , val resCorpusQ    : String = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQ"
-  , val resCorpusQT   : String = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQT"
-  , val resCorpusQA   : String = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQA"
-  , val resStopwords  : String = "hdfs://master:54310/user/hduser/stackoverflow/stopwords.txt"
-  , val checkpointDir : String = "hdfs://master:54310/user/hduser/stackoverflow/checkpoint"
-
-// Cluster Denis
-//  , val master        : String = "spark://spark-node-1:7077"
-//  , val resSOPosts    : String = "hdfs://spark-node-1:9000/stackoverflow/Posts.xml"
-//  , val resCorpusQ    : String = "hdfs://spark-node-1:9000/stackoverflow/CorpusQ"
-//  , val resCorpusQT   : String = "hdfs://spark-node-1:9000/stackoverflow/CorpusQT"
-//  , val resCorpusQA   : String = "hdfs://spark-node-1:9000/stackoverflow/CorpusQA"
-//  , val resStopwords  : String = "hdfs://spark-node-1:9000/stackoverflow/stopwords.txt"
-//  , val checkpointDir : String = "hdfs://spark-node-1:9000/stackoverflow/checkpoint"
+// Cluster Configurations
+  , @BeanProperty var master        : String
+  , @BeanProperty var resSOPosts    : String
+  , @BeanProperty var resCorpusQ    : String
+  , @BeanProperty var resCorpusQT   : String
+  , @BeanProperty var resCorpusQA   : String
+  , @BeanProperty var resStopwords  : String
+  , @BeanProperty var checkpointDir : String
 
 // Experiment Configurations
-  , val minTermLenght : Int = 2  // A term should have at least minTermLenght characters to be considered as token
-  , val qtyOfTopTerms : Int = 20 // how many top terms should be printed on output
-  , val termMinDocFreq: Int = 3  // minimum number of different documents a term must appear in to be included in the vocabulary
-  , var qtyLDATopics  : Int = 20 // number of LDA latent topics
-  , val minQtyLDATop  : Int = 60
-  , val optimizer     : String = "em"
-  , val alpha         : Double = -1 // LDA dirichlet prior probability placed on document-topic distribution. Choose a low alpha if your documents are made up of a few dominant topics 
-  , val beta          : Double = -1 // LDA dirichlet prior probability placed on topic-word distribution. Choose a low beta if your topics are made up of a few dominant words
-  , val maxIterations : Int = 1000 // number of LDA training iterations
-  , val termsPerTopic : Int = 20 // how many terms per topic should be printed on output 
-  , val topDocPerTopic: Int = 10 // how many top documents per topic should be printed on output
-  , val prtTopTerms   : Boolean = false
-  , val prtStats      : Boolean = true
-  , val describeTopics: Boolean = true
-  , val horizontOutput: Boolean = true
-  , val corpusQT      : Boolean = true
-  , val corpusQ       : Boolean = false
-  , val corpusQA      : Boolean = false
-  , val outputCSV     : Boolean = false
-  )
+  , @BeanProperty var minTermLenght : Int
+  , @BeanProperty var qtyOfTopTerms : Int
+  , @BeanProperty var termMinDocFreq: Int
+  , @BeanProperty var qtyLDATopics  : Int
+  , @BeanProperty var minQtyLDATop  : Int
+  , @BeanProperty var optimizer     : String
+  , @BeanProperty var alpha         : Double
+  , @BeanProperty var beta          : Double
+  , @BeanProperty var maxIterations : Int
+  , @BeanProperty var termsPerTopic : Int
+  , @BeanProperty var topDocPerTopic: Int
+  , @BeanProperty var prtTopTerms   : Boolean
+  , @BeanProperty var prtStats      : Boolean
+  , @BeanProperty var describeTopics: Boolean
+  , @BeanProperty var horizontOutput: Boolean
+  , @BeanProperty var corpusQT      : Boolean
+  , @BeanProperty var corpusQ       : Boolean
+  , @BeanProperty var corpusQA      : Boolean
+  , @BeanProperty var outputCSV     : Boolean
+  ) {
+  def this() = this("","","","","","","","",0,0,0,0,0,"", 0,0,0,0,0,false,false,false,false,false,false,false,false)
+}
   
   case class Stats(
     var LDAInitTime : Instant = Instant.now()
@@ -104,7 +91,10 @@ object SparkOverflow {
   def main(args: Array[String]) {
     Logger.getLogger("org").setLevel(Level.ERROR) // Set the log level to only print errors
     
-    val params = Params()
+    val config = ConfigFactory.parseFile(new java.io.File("application.conf")).getConfig("config")
+    val params = ConfigBeanFactory.create(config, classOf[Params])
+    
+    println(s"Experiment ${params}")
     
     val spark = SparkSession
       .builder
@@ -371,7 +361,6 @@ object SparkOverflow {
       .setInputCol("document")
       .setOutputCol("removed")
     val removed = remover.transform(corpus)
-    
     // Top Terms in whole corpus
     if (params.prtTopTerms) {
       removed.persist(MEMORY_ONLY)
@@ -389,7 +378,6 @@ object SparkOverflow {
       tokensFrequency.take(params.qtyOfTopTerms).foreach(tuple => print(f"${tuple._1} (${tuple._2}%.0f) "))
       println("")
     }
-    
     // Runs one LDA experiment varying the number of desired Topics 
     Range.inclusive(params.minQtyLDATop, params.qtyLDATopics, 10).foreach { 
       case i => {
