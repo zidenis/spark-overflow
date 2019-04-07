@@ -408,6 +408,9 @@ object SparkOverflow {
       .setMinDF(params.termMinDocFreq)
       .setMinTF(1.0)
       .fit(corpus)
+      
+    vectorizer.save(params.resourcesDir+"/vectorizer-"+id+"-"+params.qtyLDATopics)
+    
     val vectorized = vectorizer.transform(corpus).select("id", "features")
     stats.vocabLength = vectorizer.vocabulary.length
     
@@ -439,7 +442,7 @@ object SparkOverflow {
     stats.alpha = ldaModel.docConcentration(0)
     stats.beta = ldaModel.topicConcentration
     
-    ldaModel.save(spark.sparkContext, params.resourcesDir+"/ldaModel-"+id)
+    ldaModel.save(spark.sparkContext, params.resourcesDir+"/ldaModel-"+id+"-"+params.qtyLDATopics)
     
     // Describing Topics
     if (params.describeTopics) {
