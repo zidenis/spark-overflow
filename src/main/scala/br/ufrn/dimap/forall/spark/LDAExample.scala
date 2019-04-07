@@ -27,6 +27,8 @@ object LDAExample {
   
   case class Params(
     val appName       : String = "LDA"
+
+// Local
 //  , val master        : String = "local[*]"
 //  , val resSOPosts    : String = "./resources/Posts-Spark-100.xml" // Stack Overflow's Posts Dataset
 //  , val resCorpusQ    : String = "./resources/CorpusQ"             // Corpus of Questions (documents are question's title and body) 
@@ -35,6 +37,8 @@ object LDAExample {
 //  , val resCorpusQA   : String = "./resources/CorpusQA"            // Corpus of Questions and answers (documents are question's title and body concatenated with all the bodies of the answers to the question) 
 //  , val resStopwords  : String = "./resources/stopwords.txt"       // Set of words to be ignored as tokens
 //  , val checkpointDir : String = "./resources/checkpoint"
+
+// Cluster IMD
   , val master        : String = "spark://10.7.40.42:7077"
   , val resSOPosts    : String = "hdfs://master:54310/user/hduser/stackoverflow/Posts.xml"
   , val resCorpusQ    : String = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQ"
@@ -43,11 +47,23 @@ object LDAExample {
   , val resCorpusQA   : String = "hdfs://master:54310/user/hduser/stackoverflow/CorpusQA"
   , val resStopwords  : String = "hdfs://master:54310/user/hduser/stackoverflow/stopwords.txt"
   , val checkpointDir : String = "hdfs://master:54310/user/hduser/stackoverflow/checkpoint"
+
+// Cluster Denis
+//  , val master        : String = "spark://spark-node-1:7077"
+//  , val resSOPosts    : String = "hdfs://spark-node-1:9000/stackoverflow/Posts.xml"
+//  , val resCorpusQ    : String = "hdfs://spark-node-1:9000/stackoverflow/CorpusQ"
+//  , val resCorpusQT   : String = "hdfs://spark-node-1:9000/stackoverflow/CorpusQT"
+//  , val resCorpusA    : String = "hdfs://spark-node-1:9000/stackoverflow/CorpusA"
+//  , val resCorpusQA   : String = "hdfs://spark-node-1:9000/stackoverflow/CorpusQA"
+//  , val resStopwords  : String = "hdfs://spark-node-1:9000/stackoverflow/stopwords.txt"
+//  , val checkpointDir : String = "hdfs://spark-node-1:9000/stackoverflow/checkpoint"
+
+// Experiment Configurations
   , val minTermLenght : Int = 3  // A term should have at least minTermLenght characters to be considered as token
   , val qtyOfTopTerms : Int = 20 // how many top terms should be printed on output
   , val termMinDocFreq: Int = 3  // minimum number of different documents a term must appear in to be included in the vocabulary
-  , var qtyLDATopics  : Int = 40 // number of LDA latent topics
-  , val minQtyLDATop  : Int = 20
+  , var qtyLDATopics  : Int = 30 // number of LDA latent topics
+  , val minQtyLDATop  : Int = 10
   , val optimizer     : String = "em"
   , val alpha         : Double = -1 // LDA dirichlet prior probability placed on document-topic distribution. Choose a low alpha if your documents are made up of a few dominant topics 
   , val beta          : Double = -1 // LDA dirichlet prior probability placed on topic-word distribution. Choose a low beta if your topics are made up of a few dominant words
@@ -352,10 +368,9 @@ object LDAExample {
   
   def lda_runner(id : String, corpus : DataFrame, spark: SparkSession, params: Params, stats: Stats) {
     println(s"Analyzing Corpus $id")
-    // Removing additional stopwords
-    val stopwords = Array("apach", "spark", "pyspark", "java", "python", "whi", "file", "datafram", 
-        "how", "rdd", "use", "scala", "data", "way", "code", "function", "valu", "need", "thank",
-        "dataset", "sql", "row", "column", "know", "run")
+    // Removing too frequent words
+    // val stopwords = Array("apach", "spark", "org", "code")
+    val stopwords = Array("http", "https", "github", "html", "apach", "class", "code", "data", "didnt", "didn", "doesn", "don", "give", "good", "implement", "main", "make", "need", "object", "org", "program", "solut", "spark", "understand", "util", "want", "wasn", "way", "work")
     val remover = new StopWordsRemover()
       .setStopWords(stopwords)
       .setInputCol("document")
@@ -381,7 +396,7 @@ object LDAExample {
     }
     
     // Runs one LDA experiment varying the number of desired Topics 
-    Range.inclusive(params.minQtyLDATop, params.qtyLDATopics, 5).foreach { 
+    Range.inclusive(params.minQtyLDATop, params.qtyLDATopics, 10).foreach { 
       case i => {
         params.qtyLDATopics = i
         stats.LDAInitTime = Instant.now()
@@ -422,11 +437,11 @@ object LDAExample {
     var docConcentration = params.alpha
     var topicConcentration = params.beta
     if (params.optimizer.equals("em")) {
-      if (params.alpha == -1) docConcentration = (50/params.qtyLDATopics)+1
+      if (params.alpha == -1) docConcentration = (50.0/params.qtyLDATopics)+1.0
       if (params.beta == -1) topicConcentration = 1.1
     } else if (params.optimizer.equals("online")){
-      if (params.alpha == -1) docConcentration = 1/params.qtyLDATopics
-      if (params.beta == -1) topicConcentration = 1/params.qtyLDATopics
+      if (params.alpha == -1) docConcentration = 1.0/params.qtyLDATopics
+      if (params.beta == -1) topicConcentration = 1.0/params.qtyLDATopics
     }
     
     val lda = new LDA()
