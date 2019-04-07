@@ -39,6 +39,7 @@ object SparkOverflow {
   , @BeanProperty var resCorpusQA   : String
   , @BeanProperty var resStopwords  : String
   , @BeanProperty var checkpointDir : String
+  , @BeanProperty var resourcesDir : String
 
 // Experiment Configurations
   , @BeanProperty var minTermLenght : Int
@@ -61,7 +62,7 @@ object SparkOverflow {
   , @BeanProperty var corpusQA      : Boolean
   , @BeanProperty var outputCSV     : Boolean
   ) {
-  def this() = this("","","","","","","","",0,0,0,0,0,"", 0,0,0,0,0,false,false,false,false,false,false,false,false)
+  def this() = this("","","","","","","","","",0,0,0,0,0,"", 0,0,0,0,0,false,false,false,false,false,false,false,false)
 }
   
   case class Stats(
@@ -383,7 +384,7 @@ object SparkOverflow {
       case i => {
         params.qtyLDATopics = i
         stats.LDAInitTime = Instant.now()
-        lda(removed, spark, params, stats)
+        lda(id, removed, spark, params, stats)
         stats.LDAEndTime = Instant.now()
         // Printing Stats
         if (params.prtStats) {
@@ -399,7 +400,7 @@ object SparkOverflow {
     }
   }
   
-  def lda(corpus: DataFrame, spark: SparkSession, params: Params, stats: Stats) {
+  def lda(id : String, corpus: DataFrame, spark: SparkSession, params: Params, stats: Stats) {
     // Computing tokens frequencies for LDA
     val vectorizer = new CountVectorizer()
       .setInputCol("removed")
@@ -421,7 +422,7 @@ object SparkOverflow {
     var topicConcentration = params.beta
     if (params.optimizer.equals("em")) {
       if (params.alpha == -1) docConcentration = (50.0/params.qtyLDATopics)+1.0
-      if (params.beta == -1) topicConcentration = 1.1
+      if (params.beta == -1) topicConcentration = 1.01
     } else if (params.optimizer.equals("online")){
       if (params.alpha == -1) docConcentration = 1.0/params.qtyLDATopics
       if (params.beta == -1) topicConcentration = 1.0/params.qtyLDATopics
@@ -434,10 +435,12 @@ object SparkOverflow {
       .setDocConcentration(docConcentration) 
       .setTopicConcentration(topicConcentration)
       .setCheckpointInterval(50)
-    val ldaModel = lda.run(vectorizedRDD)    
+    val ldaModel = lda.run(vectorizedRDD)
     stats.alpha = ldaModel.docConcentration(0)
     stats.beta = ldaModel.topicConcentration
-
+    
+    ldaModel.save(spark.sparkContext, params.resourcesDir+"/ldaModel-"+id)
+    
     // Describing Topics
     if (params.describeTopics) {
       val vocabList = vectorizer.vocabulary
