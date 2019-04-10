@@ -129,23 +129,31 @@ object LDADataAnalysis {
     // The topic is counted only if it has proportions greater than 0.1 in topics distribution
     
     // Listing using RDDs
-    val topicDistributions: Map[Long,Vector] = ldaModel.topicDistributions.collect().toMap
-    topicDistributions.foreach({ 
-      case (id, vect) => {
-       print(s"\n$id,")
-       vect.foreachActive({
-         case (index, value) => if (value > 0.1) print("1,") else print("0,")
-       })
-      } 
-    })
-    println("")
+//    val topicDistributions: Map[Long,Vector] = ldaModel.topicDistributions.collect().toMap
+//    topicDistributions.foreach({ 
+//      case (id, vect) => {
+//       print(s"\n$id,")
+//       vect.foreachActive({
+//         case (index, value) => if (value > 0.1) print("1,") else print("0,")
+//       })
+//      } 
+//    })
+//    println("")
     
     // Listing using Dataframes
     val vecToSeq = udf((v: Vector) => v.toArray.map(x => if (x > 0.1) 1 else 0))
     val topicDistributionsDF = spark.createDataFrame(ldaModel.topicDistributions).toDF("id", "vals")
       .withColumn("vals", vecToSeq(col("vals")))
       .select(col("id") +: (0 until params.qtyLDATopics).map(i => col("vals")(i).alias(s"Topic ${i+1}")): _*)
-    topicDistributionsDF.show()
     
+//    topicDistributionsDF.show()
+    
+    topicDistributionsDF
+      .drop(col("id"))
+      .withColumn("Agg", lit(1))
+      .groupBy("Agg")
+      .sum()
+      .drop(col("Agg"))
+      .show()
   }
 }
