@@ -122,38 +122,80 @@ object LDADataAnalysis {
     val vectorizer = CountVectorizerModel.load(params.resourcesDir+"/vectorizer-"+id+"-"+params.qtyLDATopics)
     val ldaModel = DistributedLDAModel.load(spark.sparkContext, params.resourcesDir+"/ldaModel-"+id+"-"+params.qtyLDATopics)
     
+    // Removing unused data in corpus
+    var leanCorpus = corpus.drop("creationDate", "title", "document", "tags")
+    
 //    println(s"Corpus Size = ${corpus.count()}")
 //    println(s"Model Size = ${ldaModel.topicDistributions.count()}")
 
-    // Listing the topics assignments for each document in Model
-    // The topic is counted only if it has proportions greater than 0.1 in topics distribution
+    // Listing the topics assignments for each document in Model    
+    // USING RDDs
     
-    // Listing using RDDs
 //    val topicDistributions: Map[Long,Vector] = ldaModel.topicDistributions.collect().toMap
 //    topicDistributions.foreach({ 
 //      case (id, vect) => {
 //       print(s"\n$id,")
 //       vect.foreachActive({
+//         // The topic is counted only if it has proportions greater than 0.1 in topics distribution
 //         case (index, value) => if (value > 0.1) print("1,") else print("0,")
 //       })
 //      } 
 //    })
 //    println("")
     
-    // Listing using Dataframes
-    val vecToSeq = udf((v: Vector) => v.toArray.map(x => if (x > 0.1) 1 else 0))
+    // Listing the topics assignments for each document in Model
+    // USING DATAFRAMES
+    
+    // Creating Dataframe from LDA Model
     val topicDistributionsDF = spark.createDataFrame(ldaModel.topicDistributions).toDF("id", "vals")
-      .withColumn("vals", vecToSeq(col("vals")))
+    
+    val vecToSec = udf((v: Vector) => v.toArray)
+    
+    val probPerTopicMatrix = topicDistributionsDF
+      .withColumn("vals", vecToSec(col("vals")))
+      .select(col("id") +: (0 until params.qtyLDATopics).map(i => col("vals")(i).alias(s"Topic ${i+1}")): _*)
+    probPerTopicMatrix.show()
+    
+    // UDF to transforming the vector of document's probabilities into a vector of document-topic assignment  
+    val probVectorToDocAsignVector = udf((v: Vector) => v.toArray.map(x =>
+      // The topic is counted only if it has proportions greater than 0.1 in topics distribution
+      if (x > 0.1) 1 
+      else 0
+      )
+    )
+    
+    val docsPerTopicMatrix = topicDistributionsDF
+      .withColumn("vals", probVectorToDocAsignVector(col("vals")))
       .select(col("id") +: (0 until params.qtyLDATopics).map(i => col("vals")(i).alias(s"Topic ${i+1}")): _*)
     
-//    topicDistributionsDF.show()
+    docsPerTopicMatrix.show()
+
+//    topicDistributionsDF
+//      .drop(col("id"))
+//      .withColumn("Agg", lit(1))
+//      .groupBy("Agg")
+//      .sum()
+//      .drop(col("Agg"))
+//      .show()
+//      
+//     corpus.show()
     
-    topicDistributionsDF
-      .drop(col("id"))
-      .withColumn("Agg", lit(1))
-      .groupBy("Agg")
-      .sum()
-      .drop(col("Agg"))
-      .show()
-  }
+    // UDF to transforming the vector of document's probabilities into a vector of document scores
+    val computeDocScore = udf((score: Int, viewCount: Int, answerCount: Int, favoriteCount: Int, v: Vector) => v.toArray.map(x => if (x > 0.1) {
+      10*score + viewCount + 2*answerCount + 20*favoriteCount
+    } else 0))
+    
+    val docsScorePerTopicMatrix = topicDistributionsDF
+      .join(leanCorpus, "id")
+      .withColumn("score", when(col("score").isNotNull, col("score")).otherwise(lit(0)))
+      .withColumn("viewCount", when(col("viewCount").isNotNull, col("viewCount")).otherwise(lit(0)))
+      .withColumn("answerCount", when(col("answerCount").isNotNull, col("answerCount")).otherwise(lit(0)))
+      .withColumn("favoriteCount", when(col("favoriteCount").isNotNull, col("favoriteCount")).otherwise(lit(0)))
+      .withColumn("vals", computeDocScore(col("score"), col("viewCount"), col("answerCount"), col("favoriteCount"), col("vals")))
+      .select(col("id") +: (0 until params.qtyLDATopics).map(i => col("vals")(i).alias(s"Topic ${i+1}")): _*)
+    
+    docsScorePerTopicMatrix.show()
+
+  }  
+
 }
