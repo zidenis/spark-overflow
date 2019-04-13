@@ -154,7 +154,15 @@ object LDADataAnalysis {
     val probPerTopicMatrix = topicDistributionsDF
       .withColumn("vals", vecToSec(col("vals")))
       .select(col("id") +: (0 until params.qtyLDATopics).map(i => col("vals")(i).alias(s"Topic ${i+1}")): _*)
-    probPerTopicMatrix.show()
+//    probPerTopicMatrix.show()
+      
+    val probPerTopic = probPerTopicMatrix
+      .drop(col("id"))
+      .withColumn("Agg", lit(1))
+      .groupBy("Agg")
+      .sum()
+      .drop(col("Agg"))
+    probPerTopic.show()
     
     // UDF to transforming the vector of document's probabilities into a vector of document-topic assignment  
     val probVectorToDocAsignVector = udf((v: Vector) => v.toArray.map(x =>
@@ -167,19 +175,16 @@ object LDADataAnalysis {
     val docsPerTopicMatrix = topicDistributionsDF
       .withColumn("vals", probVectorToDocAsignVector(col("vals")))
       .select(col("id") +: (0 until params.qtyLDATopics).map(i => col("vals")(i).alias(s"Topic ${i+1}")): _*)
-    
-    docsPerTopicMatrix.show()
+//    docsPerTopicMatrix.show()
 
-//    topicDistributionsDF
-//      .drop(col("id"))
-//      .withColumn("Agg", lit(1))
-//      .groupBy("Agg")
-//      .sum()
-//      .drop(col("Agg"))
-//      .show()
-//      
-//     corpus.show()
-    
+    val docsPerTopic = docsPerTopicMatrix
+      .drop(col("id"))
+      .withColumn("Agg", lit(1))
+      .groupBy("Agg")
+      .sum()
+      .drop(col("Agg"))
+    docsPerTopic.show()
+
     // UDF to transforming the vector of document's probabilities into a vector of document scores
     val computeDocScore = udf((score: Int, viewCount: Int, answerCount: Int, favoriteCount: Int, v: Vector) => v.toArray.map(x => if (x > 0.1) {
       10*score + viewCount + 2*answerCount + 20*favoriteCount
@@ -193,9 +198,15 @@ object LDADataAnalysis {
       .withColumn("favoriteCount", when(col("favoriteCount").isNotNull, col("favoriteCount")).otherwise(lit(0)))
       .withColumn("vals", computeDocScore(col("score"), col("viewCount"), col("answerCount"), col("favoriteCount"), col("vals")))
       .select(col("id") +: (0 until params.qtyLDATopics).map(i => col("vals")(i).alias(s"Topic ${i+1}")): _*)
-    
-    docsScorePerTopicMatrix.show()
+//    docsScorePerTopicMatrix.show()
 
+    val docsScorePerTopic = docsScorePerTopicMatrix
+      .drop(col("id"))
+      .withColumn("Agg", lit(1))
+      .groupBy("Agg")
+      .sum()
+      .drop(col("Agg"))
+    docsScorePerTopic.show()
   }  
 
 }
