@@ -149,20 +149,20 @@ object LDADataAnalysis {
     // Creating Dataframe from LDA Model
     val topicDistributionsDF = spark.createDataFrame(ldaModel.topicDistributions).toDF("id", "vals")
     
-    val vecToSec = udf((v: Vector) => v.toArray)
-    
-    val probPerTopicMatrix = topicDistributionsDF
-      .withColumn("vals", vecToSec(col("vals")))
-      .select(col("id") +: (0 until params.qtyLDATopics).map(i => col("vals")(i).alias(s"Topic ${i+1}")): _*)
+//    val vecToSec = udf((v: Vector) => v.toArray)
+//    
+//    val probPerTopicMatrix = topicDistributionsDF
+//      .withColumn("vals", vecToSec(col("vals")))
+//      .select(col("id") +: (0 until params.qtyLDATopics).map(i => col("vals")(i).alias(s"Topic ${i+1}")): _*)
 //    probPerTopicMatrix.show()
-      
-    val probPerTopic = probPerTopicMatrix
-      .drop(col("id"))
-      .withColumn("Agg", lit(1))
-      .groupBy("Agg")
-      .sum()
-      .drop(col("Agg"))
-    probPerTopic.show()
+//      
+//    val probPerTopic = probPerTopicMatrix
+//      .drop(col("id"))
+//      .withColumn("Agg", lit(1))
+//      .groupBy("Agg")
+//      .sum()
+//      .drop(col("Agg"))
+//    probPerTopic.show()
     
     // UDF to transforming the vector of document's probabilities into a vector of document-topic assignment  
     val probVectorToDocAsignVector = udf((v: Vector) => v.toArray.map(x =>
@@ -186,9 +186,12 @@ object LDADataAnalysis {
     docsPerTopic.show()
 
     // UDF to transforming the vector of document's probabilities into a vector of document scores
-    val computeDocScore = udf((score: Int, viewCount: Int, answerCount: Int, favoriteCount: Int, v: Vector) => v.toArray.map(x => if (x > 0.1) {
-      10*score + viewCount + 2*answerCount + 20*favoriteCount
-    } else 0))
+    val computeDocScore = udf((score: Int, viewCount: Int, answerCount: Int, favoriteCount: Int, v: Vector) => v.toArray.map(x => 
+      if (x > 0.1) {
+        10*score + viewCount + 2*answerCount + 20*favoriteCount
+      } else 0
+      )
+    )
     
     val docsScorePerTopicMatrix = topicDistributionsDF
       .join(leanCorpus, "id")
