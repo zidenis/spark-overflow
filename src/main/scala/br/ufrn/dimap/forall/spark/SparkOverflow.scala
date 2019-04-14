@@ -86,6 +86,7 @@ object SparkOverflow {
     title:            Option[String],
     tags:             Option[String],
     answerCount:      Option[Int],
+    commentCount:     Option[Int],
     favoriteCount:    Option[Int]
   )
   
@@ -123,6 +124,7 @@ object SparkOverflow {
       var tags: Option[String] = None
       var viewCount: Option[Int] = None
       var answerCount: Option[Int] = None
+      var commentCount: Option[Int] = None
       var favoriteCount: Option[Int] = None
       if (postTypeId == 1) {
         title = Some(xml \@ "Title")
@@ -133,6 +135,8 @@ object SparkOverflow {
         viewCount = if (temp.isEmpty()) None else Some(temp.toInt)
         temp = (xml \@ "AnswerCount")
         answerCount = if (temp.isEmpty()) None else Some(temp.toInt)
+        temp = (xml \@ "CommentCount")
+        commentCount = if (temp.isEmpty()) None else Some(temp.toInt)
         temp = (xml \@ "FavoriteCount")
         favoriteCount = if (temp.isEmpty()) None else Some(temp.toInt)
       }
@@ -153,6 +157,7 @@ object SparkOverflow {
           title,
           tags,
           answerCount,
+          commentCount,
           favoriteCount
         )
       )
@@ -239,7 +244,7 @@ object SparkOverflow {
       val removedQT = remover.transform(tokenizedQT)
       val stemmedQT = stemmer.transform(removedQT)
       val corpusQT = stemmedQT
-        .select("id", "creationDate", "score", "viewCount", "title", "document", "tags", "answerCount", "favoriteCount")
+        .select("id", "creationDate", "score", "viewCount", "title", "document", "tags", "answerCount", "commentCount", "favoriteCount")
     
       // corpusQT.show()
       corpusQT.write.mode(SaveMode.Overwrite).parquet(params.resCorpusQT + ".parquet")
@@ -262,7 +267,7 @@ object SparkOverflow {
       val removedQ = remover.transform(tokenizedQ)
       val stemmedQ = stemmer.transform(removedQ)
       val corpusQ = stemmedQ
-        .select("id", "creationDate", "score", "viewCount", "title", "document", "tags", "answerCount", "favoriteCount")
+        .select("id", "creationDate", "score", "viewCount", "title", "document", "tags", "answerCount", "commentCount", "favoriteCount")
       
       // corpusQ.show()
       corpusQ.write.mode(SaveMode.Overwrite).parquet(params.resCorpusQ + ".parquet")
@@ -304,7 +309,7 @@ object SparkOverflow {
       // Corpus QA
       // Obter Posts com perguntas sobre Spark e suas respectivas respostas
       val sparkQA = sql("""
-        SELECT q.id, q.title, q.cleaned qd, a.cleaned ad, q.creationDate, q.score, q.viewCount, q.tags, q.answerCount, q.favoriteCount
+        SELECT q.id, q.title, q.cleaned qd, a.cleaned ad, q.creationDate, q.score, q.viewCount, q.tags, q.answerCount, q.commentCount, q.favoriteCount
           FROM corpusQ q 
      LEFT JOIN corpusA a 
             ON q.id = a.id
@@ -317,7 +322,7 @@ object SparkOverflow {
       val removedQA = remover.transform(tokenizedQA)
       val stemmedQA = stemmer.transform(removedQA)  
       val corpusQA = stemmedQA
-        .select("id", "creationDate", "score", "viewCount", "title", "document", "tags", "answerCount", "favoriteCount")
+        .select("id", "creationDate", "score", "viewCount", "title", "document", "tags", "answerCount", "commentCount", "favoriteCount")
   
   //    corpusQA.show()
       corpusQA.write.mode(SaveMode.Overwrite).parquet(params.resCorpusQA + ".parquet")
