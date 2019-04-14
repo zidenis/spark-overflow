@@ -124,6 +124,7 @@ object LDADataAnalysis {
     
     // Removing unused data in corpus
     var leanCorpus = corpus.drop("creationDate", "title", "document", "tags")
+//    leanCorpus.show()
     
 //    println(s"Corpus Size = ${corpus.count()}")
 //    println(s"Model Size = ${ldaModel.topicDistributions.count()}")
@@ -186,9 +187,9 @@ object LDADataAnalysis {
     docsPerTopic.show()
 
     // UDF to transforming the vector of document's probabilities into a vector of document scores
-    val computeDocScore = udf((score: Int, viewCount: Int, answerCount: Int, favoriteCount: Int, v: Vector) => v.toArray.map(x => 
+    val computeDocScore = udf((score: Int, viewCount: Int, answerCount: Int, commentCount: Int, favoriteCount: Int, v: Vector) => v.toArray.map(x => 
       if (x > 0.1) {
-        10*score + viewCount + 2*answerCount + 20*favoriteCount
+        3*score + viewCount + 10*commentCount + answerCount + favoriteCount
       } else 0
       )
     )
@@ -198,8 +199,9 @@ object LDADataAnalysis {
       .withColumn("score", when(col("score").isNotNull, col("score")).otherwise(lit(0)))
       .withColumn("viewCount", when(col("viewCount").isNotNull, col("viewCount")).otherwise(lit(0)))
       .withColumn("answerCount", when(col("answerCount").isNotNull, col("answerCount")).otherwise(lit(0)))
+      .withColumn("commentCount", when(col("commentCount").isNotNull, col("commentCount")).otherwise(lit(0)))
       .withColumn("favoriteCount", when(col("favoriteCount").isNotNull, col("favoriteCount")).otherwise(lit(0)))
-      .withColumn("vals", computeDocScore(col("score"), col("viewCount"), col("answerCount"), col("favoriteCount"), col("vals")))
+      .withColumn("vals", computeDocScore(col("score"), col("viewCount"), col("answerCount"), col("commentCount"), col("favoriteCount"), col("vals")))
       .select(col("id") +: (0 until params.qtyLDATopics).map(i => col("vals")(i).alias(s"Topic ${i+1}")): _*)
 //    docsScorePerTopicMatrix.show()
 
