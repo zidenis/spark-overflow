@@ -186,6 +186,30 @@ object LDADataAnalysis {
       .drop(col("Agg"))
     docsPerTopic.show()
 
+    // UDF to transforming the vector of document's probabilities into a vector of document views
+    val docViews = udf((viewCount: Int, v: Vector) => v.toArray.map(x => 
+      if (x > 0.1) {
+        viewCount
+      } else 0
+      )
+    )
+    
+    val docsViewsPerTopicMatrix = topicDistributionsDF
+      .join(leanCorpus, "id")
+      .withColumn("viewCount", when(col("viewCount").isNotNull, col("viewCount")).otherwise(lit(0)))
+      .withColumn("vals", docViews(col("viewCount"), col("vals")))
+      .select(col("id") +: (0 until params.qtyLDATopics).map(i => col("vals")(i).alias(s"Topic ${i+1}")): _*)
+//    docsScorePerTopicMatrix.show()
+
+    val docsViewsPerTopic = docsViewsPerTopicMatrix
+      .drop(col("id"))
+      .withColumn("Agg", lit(1))
+      .groupBy("Agg")
+      .sum()
+      .drop(col("Agg"))
+    docsViewsPerTopic.show()
+    
+    
     // UDF to transforming the vector of document's probabilities into a vector of document scores
     val computeDocScore = udf((score: Int, viewCount: Int, answerCount: Int, commentCount: Int, favoriteCount: Int, v: Vector) => v.toArray.map(x => 
       if (x > 0.1) {
