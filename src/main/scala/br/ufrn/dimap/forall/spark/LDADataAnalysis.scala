@@ -227,7 +227,7 @@ object LDADataAnalysis {
     // UDF to transforming the vector of document's probabilities into a vector of document scores
     val computeDocScore = udf((score: Int, viewCount: Int, answerCount: Int, commentCount: Int, favoriteCount: Int, v: Vector) => v.toArray.map(x => 
       if (x > 0.1) {
-        3*score + viewCount + 10*commentCount + answerCount + favoriteCount
+        3*score + 10*commentCount + answerCount + favoriteCount
       } else 0
       )
     )
