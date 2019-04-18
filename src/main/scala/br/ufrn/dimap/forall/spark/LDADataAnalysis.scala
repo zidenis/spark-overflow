@@ -125,6 +125,20 @@ object LDADataAnalysis {
     // Removing unused data in corpus
     var leanCorpus = corpus.drop("creationDate", "title", "document", "tags")
 //    leanCorpus.show()
+    // Corpus Stats
+    leanCorpus
+      .drop("id")
+      .withColumn("Dataset", lit("Spark"))
+      .withColumn("Questions", lit(1))
+      .withColumnRenamed("answerCount", "Answers")
+      .withColumnRenamed("commentCount", "Comments")
+      .withColumnRenamed("viewCount", "Views")
+      .withColumnRenamed("favoriteCount", "Favorites")
+      .withColumnRenamed("score", "Scores")
+      .select("Dataset","Questions", "Answers", "Comments", "Views", "Favorites", "Scores")
+      .groupBy("Dataset")
+      .sum()
+      .show()
     
 //    println(s"Corpus Size = ${corpus.count()}")
 //    println(s"Model Size = ${ldaModel.topicDistributions.count()}")
@@ -199,7 +213,7 @@ object LDADataAnalysis {
       .withColumn("viewCount", when(col("viewCount").isNotNull, col("viewCount")).otherwise(lit(0)))
       .withColumn("vals", docViews(col("viewCount"), col("vals")))
       .select(col("id") +: (0 until params.qtyLDATopics).map(i => col("vals")(i).alias(s"Topic ${i+1}")): _*)
-//    docsScorePerTopicMatrix.show()
+//    docsViewsPerTopicMatrix.show()
 
     val docsViewsPerTopic = docsViewsPerTopicMatrix
       .drop(col("id"))
