@@ -117,16 +117,20 @@ object LDADataAnalysis {
   }
   
   def lda_analysis(id : String, corpus: DataFrame, spark: SparkSession, params: Params) {
+    val demo = false
     
     // Loading Models
-    val vectorizer = CountVectorizerModel.load(params.resourcesDir+"/vectorizer-"+id+"-"+params.qtyLDATopics)
+//    val vectorizer = CountVectorizerModel.load(params.resourcesDir+"/vectorizer-"+id+"-"+params.qtyLDATopics)
     val ldaModel = DistributedLDAModel.load(spark.sparkContext, params.resourcesDir+"/ldaModel-"+id+"-"+params.qtyLDATopics)
     
     // Removing unused data in corpus
     var leanCorpus = corpus.drop("creationDate", "title", "document", "tags")
-//    leanCorpus.show()
+    if (demo) {
+      println(s"Corpus Sample")
+      leanCorpus.show()
+    }
     // Corpus Stats
-    leanCorpus
+    val leanCorpusStats = leanCorpus
       .drop("id")
       .withColumn("Dataset", lit("Spark"))
       .withColumn("Questions", lit(1))
@@ -138,8 +142,10 @@ object LDADataAnalysis {
       .select("Dataset","Questions", "Answers", "Comments", "Views", "Favorites", "Scores")
       .groupBy("Dataset")
       .sum()
-      .show()
-    
+    if (demo) {
+      println(s"Corpus' Stats")
+      leanCorpusStats.show()
+    }
 //    println(s"Corpus Size = ${corpus.count()}")
 //    println(s"Model Size = ${ldaModel.topicDistributions.count()}")
 
@@ -162,22 +168,101 @@ object LDADataAnalysis {
     // USING DATAFRAMES
     
     // Creating Dataframe from LDA Model
-    val topicDistributionsDF = spark.createDataFrame(ldaModel.topicDistributions).toDF("id", "vals")
+    val topicDistributions = spark.createDataFrame(ldaModel.topicDistributions).toDF("id", "vals")
+    topicDistributions.cache()
     
-//    val vecToSec = udf((v: Vector) => v.toArray)
-//    
-//    val probPerTopicMatrix = topicDistributionsDF
-//      .withColumn("vals", vecToSec(col("vals")))
-//      .select(col("id") +: (0 until params.qtyLDATopics).map(i => col("vals")(i).alias(s"Topic ${i+1}")): _*)
-//    probPerTopicMatrix.show()
-//      
-//    val probPerTopic = probPerTopicMatrix
-//      .drop(col("id"))
-//      .withColumn("Agg", lit(1))
-//      .groupBy("Agg")
-//      .sum()
-//      .drop(col("Agg"))
-//    probPerTopic.show()
+    val valsVector2ValsArray = udf((v: Vector) => v.toArray)
+    
+    val topicMembershipMatrix = topicDistributions
+      .withColumn("vals", valsVector2ValsArray(col("vals")))
+      .select(col("id") +: (0 until params.qtyLDATopics).map(i => col("vals")(i).alias(s"Topic ${i+1}")): _*)
+    if (demo) {
+      println(s"Topics Membership Matrix")
+      topicMembershipMatrix.show()
+    }
+    
+    val valsVector2MaxValsArray = udf((v: Vector) => {
+      val maxValue = v.toArray.max
+      v.toArray.map(value =>
+        if (value != maxValue) 0
+        else value
+        )
+      })
+    
+    val dominantTopicMatrix = topicDistributions
+      .withColumn("vals", valsVector2MaxValsArray(col("vals")))
+      .select(col("id") +: (0 until params.qtyLDATopics).map(i => col("vals")(i).alias(s"Topic ${i+1}")): _*)
+    if (demo) {
+      println(s"Dominant Topic Matrix")
+      dominantTopicMatrix.show()
+    }
+    
+    val valsVector2DominantTopicIndexArray = udf((v: Vector) => {
+      val maxValue = v.toArray.max
+      v.toArray.map(value =>
+        if (value != maxValue) 0
+        else 1
+        )
+      })
+    
+    val dominantTopicIndexMatrix = topicDistributions
+      .withColumn("vals", valsVector2DominantTopicIndexArray(col("vals")))
+      .select(col("id") +: (0 until params.qtyLDATopics).map(i => col("vals")(i).alias(s"Topic ${i+1}")): _*)
+    if (demo) {
+      println(s"Dominant Topic Matrix")
+      dominantTopicIndexMatrix.show()
+    }
+    
+    // NNDT Metric
+    val nddt = dominantTopicIndexMatrix
+      .drop(col("id"))
+      .withColumn("Agg", lit(1))
+      .groupBy("Agg")
+      .sum()
+      .drop(col("Agg"))
+    println(s"Metric: Number of Documents with Dominant Topic K. NDDT(k)")  
+    nddt.show()
+    
+    // Dominant Topic Proportion Metric
+    val nndtColumns = nddt.columns.toSeq
+    val pddt = nddt
+      .select((0 until params.qtyLDATopics).map(i => (col(nndtColumns(i))/col("sum(Agg)")).alias(s"D(T${i+1})")): _*)
+    println(s"Metric: Proportion of Documents with Dominant Topic K")  
+    pddt.show()
+    
+    val threshold = 0.1
+    val valsVector2ValsAboveThresholdArray = udf((v: Vector) => {
+      val maxValue = v.toArray.max
+      v.toArray.map(value =>
+        if (value >= threshold) value
+        else 0
+        )
+      })
+    
+    val topicMembershipAboveThresholdMatrix = topicDistributions
+      .withColumn("vals", valsVector2ValsAboveThresholdArray(col("vals")))
+      .select(col("id") +: (0 until params.qtyLDATopics).map(i => col("vals")(i).alias(s"Topic ${i+1}")): _*)
+    if (demo) {
+      println(s"Topics Membership above threshold Matrix. Threshold = ${threshold}")
+      topicMembershipAboveThresholdMatrix.show()
+    }
+    
+    // Topic Impact Metric
+    val topicImpact = topicMembershipAboveThresholdMatrix
+      .drop(col("id"))
+      .withColumn("Agg", lit(1))
+      .groupBy("Agg")
+      .sum()
+      .drop(col("Agg"))
+    println(s"Metric: Topic Impact. Threshold = ${threshold}")  
+    topicImpact.show()
+    
+    // Topic Share Metric
+    val topicImpactColumns = topicImpact.columns.toSeq
+    val topicShare = topicImpact
+      .select((0 until params.qtyLDATopics).map(i => (col(topicImpactColumns(i))/col("sum(Agg)")).alias(s"Share(T${i+1})")): _*)
+    println(s"Metric: Topic Share. Threshold = ${threshold}")  
+    topicShare.show()
     
     // UDF to transforming the vector of document's probabilities into a vector of document-topic assignment  
     val probVectorToDocAsignVector = udf((v: Vector) => v.toArray.map(x =>
@@ -186,70 +271,93 @@ object LDADataAnalysis {
       else 0
       )
     )
-    
-    val docsPerTopicMatrix = topicDistributionsDF
-      .withColumn("vals", probVectorToDocAsignVector(col("vals")))
-      .select(col("id") +: (0 until params.qtyLDATopics).map(i => col("vals")(i).alias(s"Topic ${i+1}")): _*)
-//    docsPerTopicMatrix.show()
-
-    val docsPerTopic = docsPerTopicMatrix
-      .drop(col("id"))
-      .withColumn("Agg", lit(1))
-      .groupBy("Agg")
-      .sum()
-      .drop(col("Agg"))
-    docsPerTopic.show()
-
+   
     // UDF to transforming the vector of document's probabilities into a vector of document views
-    val docViews = udf((viewCount: Int, v: Vector) => v.toArray.map(x => 
-      if (x > 0.1) {
-        viewCount
+    val valsVector2ValsTimesViewCountArray = udf((viewCount: Int, v: Vector) => v.toArray.map(value => 
+      if (value > 0.05) {
+        value * viewCount
       } else 0
       )
     )
     
-    val docsViewsPerTopicMatrix = topicDistributionsDF
+    val viewCountTopicShareMatrix = topicDistributions
       .join(leanCorpus, "id")
       .withColumn("viewCount", when(col("viewCount").isNotNull, col("viewCount")).otherwise(lit(0)))
-      .withColumn("vals", docViews(col("viewCount"), col("vals")))
+      .withColumn("vals", valsVector2ValsTimesViewCountArray(col("viewCount"), col("vals")))
       .select(col("id") +: (0 until params.qtyLDATopics).map(i => col("vals")(i).alias(s"Topic ${i+1}")): _*)
-//    docsViewsPerTopicMatrix.show()
+    if (demo) {
+      println(s"View-Count Topic Share Matrix")  
+      viewCountTopicShareMatrix.show()
+    }
 
-    val docsViewsPerTopic = docsViewsPerTopicMatrix
+    val totalViews = leanCorpusStats.select(col("sum(Views)")).first().getAs[Long]("sum(Views)")
+    val viewCountTopicShareSum = viewCountTopicShareMatrix
       .drop(col("id"))
       .withColumn("Agg", lit(1))
       .groupBy("Agg")
       .sum()
       .drop(col("Agg"))
-    docsViewsPerTopic.show()
+      .withColumn("sum(Views)", lit(totalViews))
+    if (demo) {
+      println(s"View-Count Topic Share Sums")  
+      viewCountTopicShareSum.show()
+    }
     
+    // View-Count Topic Share Metric
+    val viewCountTopicShareSumColumns = viewCountTopicShareSum.columns.toSeq
+    val viewCountTopicShare = viewCountTopicShareSum
+      .select((0 until params.qtyLDATopics).map(i => (col(viewCountTopicShareSumColumns(i))/col("sum(Views)")).alias(s"ViewShare(T${i+1})")): _*)
+    println(s"Metric: View-Count Topic Share")  
+    viewCountTopicShare.show()
     
-    // UDF to transforming the vector of document's probabilities into a vector of document scores
-    val computeDocScore = udf((score: Int, viewCount: Int, answerCount: Int, commentCount: Int, favoriteCount: Int, v: Vector) => v.toArray.map(x => 
-      if (x > 0.1) {
-        3*score + 10*commentCount + answerCount + favoriteCount
-      } else 0
-      )
-    )
+    val valsVector2topicEntropyValsArray = udf((v: Vector) => v.toArray.map(value => value * scala.math.log10(value)))
     
-    val docsScorePerTopicMatrix = topicDistributionsDF
-      .join(leanCorpus, "id")
-      .withColumn("score", when(col("score").isNotNull, col("score")).otherwise(lit(0)))
-      .withColumn("viewCount", when(col("viewCount").isNotNull, col("viewCount")).otherwise(lit(0)))
-      .withColumn("answerCount", when(col("answerCount").isNotNull, col("answerCount")).otherwise(lit(0)))
-      .withColumn("commentCount", when(col("commentCount").isNotNull, col("commentCount")).otherwise(lit(0)))
-      .withColumn("favoriteCount", when(col("favoriteCount").isNotNull, col("favoriteCount")).otherwise(lit(0)))
-      .withColumn("vals", computeDocScore(col("score"), col("viewCount"), col("answerCount"), col("commentCount"), col("favoriteCount"), col("vals")))
+    val topicEntropyMatrix = topicDistributions
+      .withColumn("vals", valsVector2topicEntropyValsArray(col("vals")))
       .select(col("id") +: (0 until params.qtyLDATopics).map(i => col("vals")(i).alias(s"Topic ${i+1}")): _*)
-//    docsScorePerTopicMatrix.show()
-
-    val docsScorePerTopic = docsScorePerTopicMatrix
+    if (demo) {
+      println(s"Topics Entropy Matrix")
+      topicEntropyMatrix.show()
+    }
+    // Topic Entropy Metric
+    val topicEntropy = topicEntropyMatrix
       .drop(col("id"))
       .withColumn("Agg", lit(1))
       .groupBy("Agg")
       .sum()
       .drop(col("Agg"))
-    docsScorePerTopic.show()
+    println(s"Metric: Topic Entropy.")  
+    val topicEntropyColumns = topicEntropy.columns.toSeq
+    topicEntropy
+      .select((0 until params.qtyLDATopics).map(i => (col(topicEntropyColumns(i))*(-1)).alias(s"TE(T${i+1})")): _*)
+      .show
+      
+//    // UDF to transforming the vector of document's probabilities into a vector of document scores
+//    val computeDocScore = udf((score: Int, viewCount: Int, answerCount: Int, commentCount: Int, favoriteCount: Int, v: Vector) => v.toArray.map(x => 
+//      if (x > 0.1) {
+//        3*score + 10*commentCount + answerCount + favoriteCount
+//      } else 0
+//      )
+//    )
+//    
+//    val docsScorePerTopicMatrix = topicDistributions
+//      .join(leanCorpus, "id")
+//      .withColumn("score", when(col("score").isNotNull, col("score")).otherwise(lit(0)))
+//      .withColumn("viewCount", when(col("viewCount").isNotNull, col("viewCount")).otherwise(lit(0)))
+//      .withColumn("answerCount", when(col("answerCount").isNotNull, col("answerCount")).otherwise(lit(0)))
+//      .withColumn("commentCount", when(col("commentCount").isNotNull, col("commentCount")).otherwise(lit(0)))
+//      .withColumn("favoriteCount", when(col("favoriteCount").isNotNull, col("favoriteCount")).otherwise(lit(0)))
+//      .withColumn("vals", computeDocScore(col("score"), col("viewCount"), col("answerCount"), col("commentCount"), col("favoriteCount"), col("vals")))
+//      .select(col("id") +: (0 until params.qtyLDATopics).map(i => col("vals")(i).alias(s"Topic ${i+1}")): _*)
+////    docsScorePerTopicMatrix.show()
+//
+//    val docsScorePerTopic = docsScorePerTopicMatrix
+//      .drop(col("id"))
+//      .withColumn("Agg", lit(1))
+//      .groupBy("Agg")
+//      .sum()
+//      .drop(col("Agg"))
+////    docsScorePerTopic.show()
   }  
 
 }
