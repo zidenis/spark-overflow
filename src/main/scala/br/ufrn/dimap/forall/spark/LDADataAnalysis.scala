@@ -272,25 +272,70 @@ object LDADataAnalysis {
       )
     )
    
-    // UDF to transforming the vector of document's probabilities into a vector of document views
-    val valsVector2ValsTimesViewCountArray = udf((viewCount: Int, v: Vector) => v.toArray.map(value => 
+    // UDFs to transforming the vector of document's probabilities into a vector of document metrics
+    val valsVector2ValsTimesMetricCountArray = udf((metric: Int, v: Vector) => v.toArray.map(value => 
       if (value >= threshold) {
-        value * viewCount
+        value * metric
       } else 0
       )
     )
-    
+        
     val viewCountTopicShareMatrix = topicDistributions
       .join(leanCorpus, "id")
       .withColumn("viewCount", when(col("viewCount").isNotNull, col("viewCount")).otherwise(lit(0)))
-      .withColumn("vals", valsVector2ValsTimesViewCountArray(col("viewCount"), col("vals")))
+      .withColumn("vals", valsVector2ValsTimesMetricCountArray(col("viewCount"), col("vals")))
       .select(col("id") +: (0 until params.qtyLDATopics).map(i => col("vals")(i).alias(s"Topic ${i+1}")): _*)
     if (demo) {
       println(s"View-Count Topic Share Matrix")  
       viewCountTopicShareMatrix.show()
     }
 
+    val answerCountTopicShareMatrix = topicDistributions
+      .join(leanCorpus, "id")
+      .withColumn("answerCount", when(col("answerCount").isNotNull, col("answerCount")).otherwise(lit(0)))
+      .withColumn("vals", valsVector2ValsTimesMetricCountArray(col("answerCount"), col("vals")))
+      .select(col("id") +: (0 until params.qtyLDATopics).map(i => col("vals")(i).alias(s"Topic ${i+1}")): _*)
+    if (demo) {
+      println(s"Answer-Count Topic Share Matrix")  
+      answerCountTopicShareMatrix.show()
+    }
+    
+    val commentCountTopicShareMatrix = topicDistributions
+      .join(leanCorpus, "id")
+      .withColumn("commentCount", when(col("commentCount").isNotNull, col("commentCount")).otherwise(lit(0)))
+      .withColumn("vals", valsVector2ValsTimesMetricCountArray(col("commentCount"), col("vals")))
+      .select(col("id") +: (0 until params.qtyLDATopics).map(i => col("vals")(i).alias(s"Topic ${i+1}")): _*)
+    if (demo) {
+      println(s"Comment-Count Topic Share Matrix")  
+      commentCountTopicShareMatrix.show()
+    }
+    
+    val favoriteCountTopicShareMatrix = topicDistributions
+      .join(leanCorpus, "id")
+      .withColumn("favoriteCount", when(col("favoriteCount").isNotNull, col("favoriteCount")).otherwise(lit(0)))
+      .withColumn("vals", valsVector2ValsTimesMetricCountArray(col("favoriteCount"), col("vals")))
+      .select(col("id") +: (0 until params.qtyLDATopics).map(i => col("vals")(i).alias(s"Topic ${i+1}")): _*)
+    if (demo) {
+      println(s"Favorite-Count Topic Share Matrix")  
+      favoriteCountTopicShareMatrix.show()
+    }
+    
+    val scoreCountTopicShareMatrix = topicDistributions
+      .join(leanCorpus, "id")
+      .withColumn("score", when(col("score").isNotNull, col("score")).otherwise(lit(0)))
+      .withColumn("vals", valsVector2ValsTimesMetricCountArray(col("score"), col("vals")))
+      .select(col("id") +: (0 until params.qtyLDATopics).map(i => col("vals")(i).alias(s"Topic ${i+1}")): _*)
+    if (demo) {
+      println(s"Score-Count Topic Share Matrix")  
+      scoreCountTopicShareMatrix.show()
+    }
+    
     val totalViews = leanCorpusStats.select(col("sum(Views)")).first().getAs[Long]("sum(Views)")
+    val totalAnswers = leanCorpusStats.select(col("sum(Answers)")).first().getAs[Long]("sum(Answers)")
+    val totalComments = leanCorpusStats.select(col("sum(Comments)")).first().getAs[Long]("sum(Comments)")
+    val totalFavorites = leanCorpusStats.select(col("sum(Favorites)")).first().getAs[Long]("sum(Favorites)")
+    val totalScores = leanCorpusStats.select(col("sum(Scores)")).first().getAs[Long]("sum(Scores)")
+    
     val viewCountTopicShareSum = viewCountTopicShareMatrix
       .drop(col("id"))
       .withColumn("Agg", lit(1))
@@ -303,6 +348,54 @@ object LDADataAnalysis {
       viewCountTopicShareSum.show()
     }
     
+    val answerCountTopicShareSum = answerCountTopicShareMatrix
+      .drop(col("id"))
+      .withColumn("Agg", lit(1))
+      .groupBy("Agg")
+      .sum()
+      .drop(col("Agg"))
+      .withColumn("sum(Answers)", lit(totalAnswers))
+    if (demo) {
+      println(s"Answer-Count Topic Share Sums")  
+      answerCountTopicShareSum.show()
+    }
+    
+    val commentCountTopicShareSum = commentCountTopicShareMatrix
+      .drop(col("id"))
+      .withColumn("Agg", lit(1))
+      .groupBy("Agg")
+      .sum()
+      .drop(col("Agg"))
+      .withColumn("sum(Comments)", lit(totalComments))
+    if (demo) {
+      println(s"Comment-Count Topic Share Sums")  
+      commentCountTopicShareSum.show()
+    }
+    
+    val favoriteCountTopicShareSum = favoriteCountTopicShareMatrix
+      .drop(col("id"))
+      .withColumn("Agg", lit(1))
+      .groupBy("Agg")
+      .sum()
+      .drop(col("Agg"))
+      .withColumn("sum(Favorites)", lit(totalFavorites))
+    if (demo) {
+      println(s"Favorite-Count Topic Share Sums")  
+      favoriteCountTopicShareSum.show()
+    }
+    
+    val scoreCountTopicShareSum = scoreCountTopicShareMatrix
+      .drop(col("id"))
+      .withColumn("Agg", lit(1))
+      .groupBy("Agg")
+      .sum()
+      .drop(col("Agg"))
+      .withColumn("sum(Scores)", lit(totalScores))
+    if (demo) {
+      println(s"Score-Count Topic Share Sums")  
+      scoreCountTopicShareSum.show()
+    }
+    
     // View-Count Topic Share Metric
     val viewCountTopicShareSumColumns = viewCountTopicShareSum.columns.toSeq
     val viewCountTopicShare = viewCountTopicShareSum
@@ -310,6 +403,35 @@ object LDADataAnalysis {
     println(s"Metric: View-Count Topic Share")  
     viewCountTopicShare.show()
     
+    // Answer-Count Topic Share Metric
+    val answerCountTopicShareSumColumns = answerCountTopicShareSum.columns.toSeq
+    val answerCountTopicShare = answerCountTopicShareSum
+      .select((0 until params.qtyLDATopics).map(i => (col(answerCountTopicShareSumColumns(i))/col("sum(Answers)")).alias(s"AnswerShare(T${i+1})")): _*)
+    println(s"Metric: Answer-Count Topic Share")  
+    answerCountTopicShare.show()
+    
+    // Comment-Count Topic Share Metric
+    val commentCountTopicShareSumColumns = commentCountTopicShareSum.columns.toSeq
+    val commentCountTopicShare = commentCountTopicShareSum
+      .select((0 until params.qtyLDATopics).map(i => (col(commentCountTopicShareSumColumns(i))/col("sum(Comments)")).alias(s"CommentShare(T${i+1})")): _*)
+    println(s"Metric: Comment-Count Topic Share")  
+    commentCountTopicShare.show()
+    
+    // Comment-Count Topic Share Metric
+    val favoriteCountTopicShareSumColumns = favoriteCountTopicShareSum.columns.toSeq
+    val favoriteCountTopicShare = favoriteCountTopicShareSum
+      .select((0 until params.qtyLDATopics).map(i => (col(favoriteCountTopicShareSumColumns(i))/col("sum(Favorites)")).alias(s"FavoriteShare(T${i+1})")): _*)
+    println(s"Metric: Favorite-Count Topic Share")  
+    favoriteCountTopicShare.show()
+    
+    // Comment-Count Topic Share Metric
+    val scoreCountTopicShareSumColumns = scoreCountTopicShareSum.columns.toSeq
+    val scoreCountTopicShare = scoreCountTopicShareSum
+      .select((0 until params.qtyLDATopics).map(i => (col(scoreCountTopicShareSumColumns(i))/col("sum(Scores)")).alias(s"ScoreShare(T${i+1})")): _*)
+    println(s"Metric: Score-Count Topic Share")  
+    scoreCountTopicShare.show() 
+
+    // Topic Entropy Metric
     val valsVector2topicEntropyValsArray = udf((v: Vector) => v.toArray.map(value =>
       if (value >= threshold) {
         value * scala.math.log10(value)
@@ -323,7 +445,7 @@ object LDADataAnalysis {
       println(s"Topics Entropy Matrix")
       topicEntropyMatrix.show()
     }
-    // Topic Entropy Metric
+    
     val topicEntropy = topicEntropyMatrix
       .drop(col("id"))
       .withColumn("Agg", lit(1))
