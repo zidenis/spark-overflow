@@ -274,7 +274,7 @@ object LDADataAnalysis {
    
     // UDF to transforming the vector of document's probabilities into a vector of document views
     val valsVector2ValsTimesViewCountArray = udf((viewCount: Int, v: Vector) => v.toArray.map(value => 
-      if (value > 0.05) {
+      if (value >= threshold) {
         value * viewCount
       } else 0
       )
@@ -310,7 +310,11 @@ object LDADataAnalysis {
     println(s"Metric: View-Count Topic Share")  
     viewCountTopicShare.show()
     
-    val valsVector2topicEntropyValsArray = udf((v: Vector) => v.toArray.map(value => value * scala.math.log10(value)))
+    val valsVector2topicEntropyValsArray = udf((v: Vector) => v.toArray.map(value =>
+      if (value >= threshold) {
+        value * scala.math.log10(value)
+      } else 0
+    ))
     
     val topicEntropyMatrix = topicDistributions
       .withColumn("vals", valsVector2topicEntropyValsArray(col("vals")))
